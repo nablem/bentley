@@ -13,7 +13,7 @@ defmodule Bentley.Updater do
 
   @details_api_base_url "https://api.dexscreener.com/tokens/v1/solana"
   @default_update_interval :timer.minutes(1)
-  @default_batch_size 20
+  @default_batch_size 30
 
   @high_volume_threshold 1_000.0
   @age_fast_hours 10.0
@@ -49,11 +49,8 @@ defmodule Bentley.Updater do
   end
 
   def due_token_addresses(limit \\ @default_batch_size, now \\ current_time()) do
-    # broad prefilter: keep only potentially due tokens (fastest interval)
-    broad_cutoff = cutoff_for(now, @fast_refresh_interval)
-
     Token
-    |> where([t], is_nil(t.last_checked_at) or t.last_checked_at <= ^broad_cutoff)
+    |> where([t], t.active == true)
     |> order_by([t], asc: t.last_checked_at)
     |> select([t], %{
       token_address: t.token_address,

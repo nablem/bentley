@@ -192,12 +192,23 @@ defmodule Bentley.UpdaterTest do
     })
     |> Repo.insert!()
 
+    %Token{}
+    |> Token.changeset(%{
+      token_address: "inactive_due",
+      active: false,
+      created_on_chain_at: created_on_chain_at,
+      volume_1h: 100.0,
+      last_checked_at: NaiveDateTime.add(cutoff_for(now, low_volume_interval), -10, :second)
+    })
+    |> Repo.insert!()
+
     token_addresses = Updater.due_token_addresses(10, now)
 
     assert "never_checked" in token_addresses
     assert "high_volume_due" in token_addresses
     assert "low_volume_due" in token_addresses
     refute "low_volume_fresh" in token_addresses
+    refute "inactive_due" in token_addresses
   end
 
   test "update_interval_for applies age and volume rules" do
