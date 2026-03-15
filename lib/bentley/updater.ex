@@ -12,8 +12,22 @@ defmodule Bentley.Updater do
   alias Bentley.Schema.Token
 
   @details_api_base_url "https://api.dexscreener.com/tokens/v1/solana"
-  @default_update_interval :timer.minutes(2)
+  @default_update_interval :timer.minutes(1)
   @default_batch_size 20
+
+  @high_volume_threshold 1_000.0
+  @age_fast_hours 10.0
+  @age_short_hours 24.0
+  @age_medium_hours 48.0
+  @age_long_hours 500.0
+
+  @fast_refresh_interval :timer.minutes(3)
+  @short_refresh_interval :timer.minutes(5)
+  @medium_refresh_interval :timer.minutes(15)
+  @long_refresh_interval :timer.minutes(45)
+  @very_long_refresh_interval :timer.hours(2)
+
+  @min_policy_interval :timer.minutes(3)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -29,30 +43,52 @@ defmodule Bentley.Updater do
   def handle_info(:update, state) do
     Logger.info("[Updater] Refreshing metrics for active tokens...")
 
-    due_token_addresses(state.batch_size, state.interval)
+    due_token_addresses(state.batch_size)
     |> Enum.each(&fetch_and_update_token/1)
 
     schedule_update(state.interval)
     {:noreply, state}
   end
 
-  def due_token_addresses(
-        limit \\ @default_batch_size,
-        interval_ms \\ @default_update_interval,
-        now \\ current_time()
-      ) do
-    cutoff = cutoff_for(now, interval_ms)
+  def due_token_addresses(limit \\ @default_batch_size, now \\ current_time()) do
+    broad_cutoff = cutoff_for(now, @min_policy_interval)
 
     Token
-    |> where([t], is_nil(t.last_checked_at) or t.last_checked_at <= ^cutoff)
+    |> where([t], is_nil(t.last_checked_at) or t.last_checked_at <= ^broad_cutoff)
     |> order_by([t], asc: t.last_checked_at)
-    |> limit(^limit)
-    |> select([t], t.token_address)
+    |> select([t], %{
+      token_address: t.token_address,
+      inserted_at: t.inserted_at,
+      last_checked_at: t.last_checked_at,
+      volume_1h: t.volume_1h
+    })
     |> Repo.all()
+    |> Enum.filter(&due_by_policy?(&1, now))
+    |> Enum.take(limit)
+    |> Enum.map(& &1.token_address)
   end
 
   def cutoff_for(now \\ current_time(), interval_ms \\ @default_update_interval) do
     NaiveDateTime.add(now, -div(interval_ms, 1_000), :second)
+  end
+
+  def update_interval_for(age_hours, volume_1h) do
+    cond do
+      fast_refresh?(age_hours, volume_1h) ->
+        @fast_refresh_interval
+
+      age_hours < @age_short_hours ->
+        @short_refresh_interval
+
+      age_hours < @age_medium_hours ->
+        @medium_refresh_interval
+
+      age_hours < @age_long_hours ->
+        @long_refresh_interval
+
+      true ->
+        @very_long_refresh_interval
+    end
   end
 
   def update_token_from_details(token_address, details) when is_binary(token_address) and is_map(details) do
@@ -102,6 +138,23 @@ defmodule Bentley.Updater do
   defp normalize_number(value) when is_integer(value), do: value * 1.0
   defp normalize_number(value) when is_float(value), do: value
   defp normalize_number(_value), do: nil
+
+  defp fast_refresh?(age_hours, volume_1h) do
+    age_hours < @age_fast_hours or volume_1h > @high_volume_threshold
+  end
+
+  defp due_by_policy?(token, now) do
+    age_hours = age_in_hours(token.inserted_at, now)
+    volume_1h = token.volume_1h || 0.0
+    interval = update_interval_for(age_hours, volume_1h)
+
+    token.last_checked_at == nil or
+      NaiveDateTime.compare(token.last_checked_at, cutoff_for(now, interval)) in [:lt, :eq]
+  end
+
+  defp age_in_hours(inserted_at, now) do
+    NaiveDateTime.diff(now, inserted_at, :second) / 3_600
+  end
 
   defp current_time do
     NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
