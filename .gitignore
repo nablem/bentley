@@ -24,3 +24,11 @@ bentley-*.tar
 
 # .env (dev env variables)
 .env
+
+# Local SQLite artifacts
+priv/repo/*.db
+priv/repo/*.db-shm
+priv/repo/*.db-wal
+
+# Local migrations (requested to keep untracked)
+priv/repo/migrations/
