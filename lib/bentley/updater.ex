@@ -49,6 +49,7 @@ defmodule Bentley.Updater do
   end
 
   def due_token_addresses(limit \\ @default_batch_size, now \\ current_time()) do
+    # broad prefilter: keep only potentially due tokens (fastest interval)
     broad_cutoff = cutoff_for(now, @fast_refresh_interval)
 
     Token
