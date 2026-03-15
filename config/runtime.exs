@@ -1,7 +1,7 @@
 import Config
 
 if config_env() == :dev do
-  Dotenvy.source([".env"])
+  Dotenvy.source!([".env"]) |> System.put_env()
 end
 
 dexscreener_api_key = System.get_env("DEXSCREENER_API_KEY")
