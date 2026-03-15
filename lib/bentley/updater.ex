@@ -57,7 +57,7 @@ defmodule Bentley.Updater do
     |> order_by([t], asc: t.last_checked_at)
     |> select([t], %{
       token_address: t.token_address,
-      inserted_at: t.inserted_at,
+      created_on_chain_at: t.created_on_chain_at,
       last_checked_at: t.last_checked_at,
       volume_1h: t.volume_1h
     })
@@ -91,13 +91,26 @@ defmodule Bentley.Updater do
   end
 
   def update_token_from_details(token_address, details) when is_binary(token_address) and is_map(details) do
+    socials = get_in(details, ["info", "socials"]) || []
+
     attrs = %{
+      url: details["url"],
+      website_url: first_website_url(details),
+      x_url: social_url(socials, "twitter"),
+      telegram_url: social_url(socials, "telegram"),
+      boost: normalize_integer(get_in(details, ["boosts", "active"])),
+      created_on_chain_at: normalize_pair_created_at(details["pairCreatedAt"]),
       market_cap: normalize_number(details["marketCap"]),
+      name: get_in(details, ["baseToken", "name"]),
+      ticker: get_in(details, ["baseToken", "symbol"]),
       volume_1h: normalize_number(get_in(details, ["volume", "h1"])),
       volume_6h: normalize_number(get_in(details, ["volume", "h6"])),
       volume_24h: normalize_number(get_in(details, ["volume", "h24"])),
       change_1h: normalize_number(get_in(details, ["priceChange", "h1"])),
       change_6h: normalize_number(get_in(details, ["priceChange", "h6"])),
+      change_24h: normalize_number(get_in(details, ["priceChange", "h24"])),
+      liquidity: normalize_number(get_in(details, ["liquidity", "usd"])),
+      icon: get_in(details, ["info", "imageUrl"]),
       last_checked_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     }
 
@@ -106,6 +119,8 @@ defmodule Bentley.Updater do
         {:error, :token_not_found}
 
       token ->
+        attrs = Enum.reject(attrs, fn {_key, value} -> is_nil(value) end) |> Map.new()
+
         token
         |> Token.changeset(attrs)
         |> Repo.update()
@@ -138,12 +153,46 @@ defmodule Bentley.Updater do
   defp normalize_number(value) when is_float(value), do: value
   defp normalize_number(_value), do: nil
 
+  defp normalize_integer(value) when is_integer(value), do: value
+  defp normalize_integer(value) when is_float(value), do: trunc(value)
+  defp normalize_integer(_value), do: nil
+
+  defp normalize_pair_created_at(value) when is_integer(value) do
+    case DateTime.from_unix(value, :millisecond) do
+      {:ok, datetime} -> DateTime.to_naive(datetime) |> NaiveDateTime.truncate(:second)
+      _ -> nil
+    end
+  end
+
+  defp normalize_pair_created_at(value) when is_float(value) do
+    normalize_pair_created_at(round(value))
+  end
+
+  defp normalize_pair_created_at(_value), do: nil
+
+  defp first_website_url(details) do
+    details
+    |> get_in(["info", "websites"])
+    |> case do
+      [%{"url" => url} | _] when is_binary(url) -> url
+      _ -> nil
+    end
+  end
+
+  defp social_url(socials, type) do
+    socials
+    |> Enum.find_value(fn
+      %{"type" => ^type, "url" => url} when is_binary(url) -> url
+      _ -> nil
+    end)
+  end
+
   defp fast_refresh?(age_hours, volume_1h) do
     age_hours < @age_fast_hours or volume_1h > @high_volume_threshold
   end
 
   defp due_by_policy?(token, now) do
-    age_hours = age_in_hours(token.inserted_at, now)
+    age_hours = age_in_hours(token.created_on_chain_at, now)
     volume_1h = token.volume_1h || 0.0
     interval = update_interval_for(age_hours, volume_1h)
 
@@ -151,8 +200,10 @@ defmodule Bentley.Updater do
       NaiveDateTime.compare(token.last_checked_at, cutoff_for(now, interval)) in [:lt, :eq]
   end
 
-  defp age_in_hours(inserted_at, now) do
-    NaiveDateTime.diff(now, inserted_at, :second) / 3_600
+  defp age_in_hours(nil, _now), do: 0.0
+
+  defp age_in_hours(created_on_chain_at, now) do
+    NaiveDateTime.diff(now, created_on_chain_at, :second) / 3_600
   end
 
   defp current_time do
