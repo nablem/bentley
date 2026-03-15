@@ -49,8 +49,6 @@ defmodule Bentley.Recorder do
   def process_token(data) do
     attrs = %{
       token_address: data["tokenAddress"],
-      url: data["url"],
-      icon: data["icon"],
       description: data["description"]
     }
 
@@ -58,7 +56,7 @@ defmodule Bentley.Recorder do
     %Token{}
     |> Token.changeset(attrs)
     |> Repo.insert(
-      on_conflict: {:replace, [:url, :icon, :description, :updated_at]},
+      on_conflict: {:replace, [:description, :updated_at]},
       conflict_target: :token_address
     )
     |> case do

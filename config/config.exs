@@ -6,6 +6,9 @@ config :bentley,
 config :bentley,
   start_recorder: true
 
+config :bentley,
+  start_updater: true
+
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_dev.db",
   pool_size: 5

@@ -23,8 +23,6 @@ defmodule BentleyTest do
     # Check if inserted
     token = Repo.get_by(Token, token_address: sample_data["tokenAddress"])
     assert token.token_address == sample_data["tokenAddress"]
-    assert token.url == sample_data["url"]
-    assert token.icon == sample_data["icon"]
     assert token.description == sample_data["description"]
 
     # Update the data
