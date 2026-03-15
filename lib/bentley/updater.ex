@@ -27,8 +27,6 @@ defmodule Bentley.Updater do
   @long_refresh_interval :timer.minutes(45)
   @very_long_refresh_interval :timer.hours(2)
 
-  @min_policy_interval :timer.minutes(3)
-
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -51,7 +49,7 @@ defmodule Bentley.Updater do
   end
 
   def due_token_addresses(limit \\ @default_batch_size, now \\ current_time()) do
-    broad_cutoff = cutoff_for(now, @min_policy_interval)
+    broad_cutoff = cutoff_for(now, @fast_refresh_interval)
 
     Token
     |> where([t], is_nil(t.last_checked_at) or t.last_checked_at <= ^broad_cutoff)
