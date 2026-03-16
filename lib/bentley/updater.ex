@@ -207,7 +207,7 @@ defmodule Bentley.Updater do
         Logger.debug("[Updater] Refreshed #{token_address}")
 
       {:ok, :inactivated, _token} ->
-        Logger.info("[Updater] Marked #{token_address} inactive: Token is undefined according to API")
+        Logger.info("[Updater] Marked #{token_address} inactive: token_undefined_per_api")
 
       {:error, reason} ->
         Logger.error("[Updater] Failed to persist #{token_address}: #{inspect(reason)}")

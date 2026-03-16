@@ -32,3 +32,6 @@ priv/repo/*.db-wal
 
 # Local migrations (requested to keep untracked)
 priv/repo/migrations/
+
+# Local VSCode settings
+.vscode/

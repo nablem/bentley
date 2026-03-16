@@ -6,6 +6,8 @@ defmodule Bentley.Activator do
   later without changing updater flow.
   """
 
+  require Logger
+
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
     case inactivity_reason(attrs) do
@@ -13,6 +15,10 @@ defmodule Bentley.Activator do
         %{active: true, inactivity_reason: nil}
 
       reason ->
+        Logger.info(
+          "[Activator] Marking token #{inspect(Map.get(attrs, :token_address))} inactive: #{reason}"
+        )
+
         %{active: false, inactivity_reason: reason}
     end
   end
