@@ -35,8 +35,8 @@ defmodule Bentley.Activator do
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_840h"
       livestream_related?(attrs) -> "livestream_related"
       first_update? and name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
-      first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
+      first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       true -> nil
     end
   end
