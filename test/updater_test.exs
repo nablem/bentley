@@ -211,13 +211,77 @@ defmodule Bentley.UpdaterTest do
     refute "inactive_due" in token_addresses
   end
 
+  test "due_token_addresses prioritizes by overdue ratio, not by absolute staleness" do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    # Old token (very_long = 3h interval), last checked 4.5h ago → ratio = 1.5
+    # Without the fix this would rank 2nd (checked 4.5h ago).
+    %Token{}
+    |> Token.changeset(%{
+      token_address: "slow_ratio_1_5x",
+      created_on_chain_at: NaiveDateTime.add(now, -300 * 3_600, :second),
+      volume_1h: 0.0,
+      last_checked_at: NaiveDateTime.add(now, -270 * 60, :second)
+    })
+    |> Repo.insert!()
+
+    # Young token (fast = 3min interval), last checked 12min ago → ratio = 4.0
+    # Without the fix this would rank last (most recently checked).
+    %Token{}
+    |> Token.changeset(%{
+      token_address: "fast_ratio_4x",
+      created_on_chain_at: NaiveDateTime.add(now, -5 * 3_600, :second),
+      volume_1h: 0.0,
+      last_checked_at: NaiveDateTime.add(now, -12 * 60, :second)
+    })
+    |> Repo.insert!()
+
+    # Old token (very_long = 3h interval), last checked 9h ago → ratio = 3.0
+    # Without the fix this would rank 1st (oldest last_checked_at).
+    %Token{}
+    |> Token.changeset(%{
+      token_address: "slow_ratio_3x",
+      created_on_chain_at: NaiveDateTime.add(now, -300 * 3_600, :second),
+      volume_1h: 0.0,
+      last_checked_at: NaiveDateTime.add(now, -540 * 60, :second)
+    })
+    |> Repo.insert!()
+
+    addresses = Updater.due_token_addresses(3, now)
+
+    # Correct order: highest ratio first — fast token must beat the merely stale slow ones.
+    assert addresses == ["fast_ratio_4x", "slow_ratio_3x", "slow_ratio_1_5x"]
+  end
+
+  test "due_token_addresses gives never-checked tokens the highest priority" do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    # Old token very overdue (ratio = 3.0).
+    %Token{}
+    |> Token.changeset(%{
+      token_address: "slow_overdue",
+      created_on_chain_at: NaiveDateTime.add(now, -300 * 3_600, :second),
+      volume_1h: 0.0,
+      last_checked_at: NaiveDateTime.add(now, -540 * 60, :second)
+    })
+    |> Repo.insert!()
+
+    # Token never checked — should always come first regardless.
+    %Token{}
+    |> Token.changeset(%{token_address: "never_checked"})
+    |> Repo.insert!()
+
+    [first | _] = Updater.due_token_addresses(2, now)
+    assert first == "never_checked"
+  end
+
   test "update_interval_for applies age and volume rules" do
     assert Updater.update_interval_for(5.0, 100.0) == :timer.minutes(3)
     assert Updater.update_interval_for(100.0, 1_500.0) == :timer.minutes(3)
     assert Updater.update_interval_for(20.0, 100.0) == :timer.minutes(5)
     assert Updater.update_interval_for(30.0, 100.0) == :timer.minutes(15)
-    assert Updater.update_interval_for(100.0, 100.0) == :timer.minutes(45)
-    assert Updater.update_interval_for(600.0, 100.0) == :timer.hours(2)
+    assert Updater.update_interval_for(100.0, 100.0) == :timer.minutes(60)
+    assert Updater.update_interval_for(600.0, 100.0) == :timer.hours(3)
   end
 
   test "update_interval_for handles boundaries and precedence exhaustively" do
@@ -227,11 +291,11 @@ defmodule Bentley.UpdaterTest do
       {10.0, 0.0, :timer.minutes(5)},
       {23.999, 0.0, :timer.minutes(5)},
       {24.0, 0.0, :timer.minutes(15)},
-      {47.999, 0.0, :timer.minutes(15)},
-      {48.0, 0.0, :timer.minutes(45)},
-      {499.999, 0.0, :timer.minutes(45)},
-      {500.0, 0.0, :timer.hours(2)},
-      {1_000.0, 0.0, :timer.hours(2)},
+      {71.999, 0.0, :timer.minutes(15)},
+      {72.0, 0.0, :timer.minutes(60)},
+      {239.999, 0.0, :timer.minutes(60)},
+      {240.0, 0.0, :timer.hours(3)},
+      {1_000.0, 0.0, :timer.hours(3)},
       {10.0, 1_000.0, :timer.minutes(5)},
       {500.0, 1_000.01, :timer.minutes(3)},
       {30.0, 50_000.0, :timer.minutes(3)},

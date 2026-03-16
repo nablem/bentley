@@ -51,7 +51,6 @@ defmodule Bentley.Updater do
   def due_token_addresses(limit \\ @default_batch_size, now \\ current_time()) do
     Token
     |> where([t], t.active == true)
-    |> order_by([t], asc: t.last_checked_at)
     |> select([t], %{
       token_address: t.token_address,
       created_on_chain_at: t.created_on_chain_at,
@@ -60,6 +59,7 @@ defmodule Bentley.Updater do
     })
     |> Repo.all()
     |> Enum.filter(&due_by_policy?(&1, now))
+    |> Enum.sort_by(&overdue_ratio(&1, now), :desc)
     |> Enum.take(limit)
     |> Enum.map(& &1.token_address)
   end
@@ -195,6 +195,16 @@ defmodule Bentley.Updater do
 
     token.last_checked_at == nil or
       NaiveDateTime.compare(token.last_checked_at, cutoff_for(now, interval)) in [:lt, :eq]
+  end
+
+  # Never-checked tokens always get maximum priority.
+  defp overdue_ratio(%{last_checked_at: nil}, _now), do: 1.0e308
+
+  defp overdue_ratio(token, now) do
+    age_hours = age_in_hours(token.created_on_chain_at, now)
+    volume_1h = token.volume_1h || 0.0
+    interval_seconds = div(update_interval_for(age_hours, volume_1h), 1_000)
+    NaiveDateTime.diff(now, token.last_checked_at, :second) / interval_seconds
   end
 
   defp age_in_hours(nil, _now), do: 0.0
