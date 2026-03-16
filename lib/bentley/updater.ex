@@ -18,14 +18,14 @@ defmodule Bentley.Updater do
   @high_volume_threshold 1_000.0
   @age_fast_hours 10.0
   @age_short_hours 24.0
-  @age_medium_hours 48.0
-  @age_long_hours 500.0
+  @age_medium_hours 72.0
+  @age_long_hours 240.0
 
   @fast_refresh_interval :timer.minutes(3)
   @short_refresh_interval :timer.minutes(5)
   @medium_refresh_interval :timer.minutes(15)
-  @long_refresh_interval :timer.minutes(45)
-  @very_long_refresh_interval :timer.hours(2)
+  @long_refresh_interval :timer.minutes(60)
+  @very_long_refresh_interval :timer.hours(3)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
