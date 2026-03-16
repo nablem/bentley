@@ -132,22 +132,63 @@ defmodule Bentley.Updater do
     end
   end
 
+  @doc false
+  def handle_details_response(token_address, response) when is_binary(token_address) do
+    case response do
+      {:ok, %{status: 200, body: [details | _]}} when is_map(details) ->
+        case update_token_from_details(token_address, details) do
+          {:ok, token} -> {:ok, :updated, token}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, %{status: 200, body: []}} ->
+        case mark_token_inactive(token_address, "Not found") do
+          {:ok, token} -> {:ok, :inactivated, token}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, %{status: 200, body: body}} ->
+        Logger.error("[Updater] Unexpected details payload for #{token_address}: #{inspect(body)}")
+        {:error, :unexpected_details_payload}
+
+      {:ok, response} ->
+        Logger.error("[Updater] Unexpected response for #{token_address}: #{inspect(response)}")
+        {:error, :unexpected_response}
+
+      {:error, reason} ->
+        Logger.error("[Updater] API request failed for #{token_address}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
   defp compute_ath(attrs, token) do
-    new_market_cap = attrs[:market_cap]
-    old_market_cap = token.market_cap
+    case attrs[:market_cap] do
+      market_cap when is_number(market_cap) ->
+        ath =
+          [token.ath, token.market_cap, market_cap]
+          |> Enum.filter(&is_number/1)
+          |> Enum.max()
 
-    case {new_market_cap, old_market_cap} do
-      # If we have a new market_cap and it's higher than the old one, update ath
-      {new, old} when is_number(new) and is_number(old) and new > old ->
-        Map.put(attrs, :ath, new)
+        Map.put(attrs, :ath, ath)
 
-      # If we have a new market_cap but no old one, use new as ath
-      {new, nil} when is_number(new) ->
-        Map.put(attrs, :ath, new)
-
-      # Otherwise, keep existing ath (don't modify attrs)
       _ ->
         attrs
+    end
+  end
+
+  defp mark_token_inactive(token_address, reason) do
+    case Repo.get_by(Token, token_address: token_address) do
+      nil ->
+        {:error, :token_not_found}
+
+      token ->
+        token
+        |> Token.changeset(%{
+          active: false,
+          inactivity_reason: reason,
+          last_checked_at: current_time()
+        })
+        |> Repo.update()
     end
   end
 
@@ -159,24 +200,17 @@ defmodule Bentley.Updater do
   end
 
   defp fetch_and_update_token(token_address) do
-    case RateLimiter.execute(fn -> Req.get("#{@details_api_base_url}/#{token_address}") end) do
-      {:ok, %{status: 200, body: [details | _]}} when is_map(details) ->
-        case update_token_from_details(token_address, details) do
-          {:ok, _token} ->
-            Logger.debug("[Updater] Refreshed #{token_address}")
+    response = RateLimiter.execute(fn -> Req.get("#{@details_api_base_url}/#{token_address}") end)
 
-          {:error, reason} ->
-            Logger.error("[Updater] Failed to persist #{token_address}: #{inspect(reason)}")
-        end
+    case handle_details_response(token_address, response) do
+      {:ok, :updated, _token} ->
+        Logger.debug("[Updater] Refreshed #{token_address}")
 
-      {:ok, %{status: 200, body: body}} ->
-        Logger.error("[Updater] Unexpected details payload for #{token_address}: #{inspect(body)}")
-
-      {:ok, response} ->
-        Logger.error("[Updater] Unexpected response for #{token_address}: #{inspect(response)}")
+      {:ok, :inactivated, _token} ->
+        Logger.info("[Updater] Marked #{token_address} inactive: Not found")
 
       {:error, reason} ->
-        Logger.error("[Updater] API request failed for #{token_address}: #{inspect(reason)}")
+        Logger.error("[Updater] Failed to persist #{token_address}: #{inspect(reason)}")
     end
   end
 

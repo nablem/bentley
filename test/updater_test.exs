@@ -1,6 +1,8 @@
 defmodule Bentley.UpdaterTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+
   alias Bentley.Repo
   alias Bentley.Schema.Token
   alias Bentley.Updater
@@ -231,6 +233,39 @@ defmodule Bentley.UpdaterTest do
     token = Repo.get_by!(Token, token_address: token_address)
     assert token.market_cap == 50.0
     assert token.ath == 200.0
+
+    details = %{
+      "marketCap" => 100.0,
+      "baseToken" => %{"name" => "Token", "symbol" => "TOK"}
+    }
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.market_cap == 100.0
+    assert token.ath == 200.0
+  end
+
+  test "handle_details_response marks token inactive when api returns an empty array" do
+    token_address = "not_found_token"
+
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      active: true,
+      inactivity_reason: nil
+    })
+    |> Repo.insert!()
+
+    capture_log(fn ->
+      assert {:ok, :inactivated, _token} =
+               Updater.handle_details_response(token_address, {:ok, %{status: 200, body: []}})
+    end)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == false
+    assert token.inactivity_reason == "Not found"
+    assert token.last_checked_at != nil
   end
 
   test "due_token_addresses only returns unchecked or stale tokens" do
