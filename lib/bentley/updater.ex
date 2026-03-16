@@ -7,6 +7,7 @@ defmodule Bentley.Updater do
 
   import Ecto.Query
 
+  alias Bentley.Activator
   alias Bentley.RateLimiter
   alias Bentley.Repo
   alias Bentley.Schema.Token
@@ -117,11 +118,24 @@ defmodule Bentley.Updater do
 
       token ->
         attrs = Enum.reject(attrs, fn {_key, value} -> is_nil(value) end) |> Map.new()
+        activity_attrs =
+          token
+          |> attrs_for_activity(attrs)
+          |> Activator.define_activity()
+
+        attrs = Map.merge(attrs, activity_attrs)
 
         token
         |> Token.changeset(attrs)
         |> Repo.update()
     end
+  end
+
+  defp attrs_for_activity(token, incoming_attrs) do
+    token
+    |> Map.from_struct()
+    |> Map.drop([:__meta__, :id, :inserted_at, :updated_at])
+    |> Map.merge(incoming_attrs)
   end
 
   defp fetch_and_update_token(token_address) do

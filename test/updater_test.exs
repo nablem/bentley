@@ -155,6 +155,47 @@ defmodule Bentley.UpdaterTest do
     assert {:error, :token_not_found} = Updater.update_token_from_details("missing_token", %{})
   end
 
+  test "update_token_from_details applies activity attrs from activator before update" do
+    token_address = "reactivation_token"
+    created_on_chain_at = ~N[2024-03-03 03:03:03]
+
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      active: false,
+      inactivity_reason: "manually_disabled",
+      description: "keep me",
+      url: "https://before.example/token",
+      website_url: "https://before.example",
+      x_url: "https://x.com/before",
+      telegram_url: "https://t.me/before",
+      boost: 9,
+      created_on_chain_at: created_on_chain_at,
+      market_cap: 123.0,
+      volume_1h: 45.0,
+      icon: "https://before.example/icon.png"
+    })
+    |> Repo.insert!()
+
+    details = %{"baseToken" => %{"name" => "Reactivated", "symbol" => "REA"}}
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == true
+    assert token.inactivity_reason == nil
+    assert token.description == "keep me"
+    assert token.url == "https://before.example/token"
+    assert token.website_url == "https://before.example"
+    assert token.x_url == "https://x.com/before"
+    assert token.telegram_url == "https://t.me/before"
+    assert token.boost == 9
+    assert token.created_on_chain_at == created_on_chain_at
+    assert token.market_cap == 123.0
+    assert token.volume_1h == 45.0
+    assert token.icon == "https://before.example/icon.png"
+  end
+
   test "due_token_addresses only returns unchecked or stale tokens" do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     created_on_chain_at = NaiveDateTime.add(now, -30 * 3_600, :second)

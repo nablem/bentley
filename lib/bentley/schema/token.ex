@@ -5,6 +5,7 @@ defmodule Bentley.Schema.Token do
   schema "tokens" do
     field(:token_address, :string)
     field(:active, :boolean, default: true)
+    field(:inactivity_reason, :string)
     field(:url, :string)
     field(:website_url, :string)
     field(:x_url, :string)
@@ -34,6 +35,7 @@ defmodule Bentley.Schema.Token do
     |> cast(attrs, [
       :token_address,
       :active,
+      :inactivity_reason,
       :url,
       :website_url,
       :x_url,
