@@ -1,7 +1,17 @@
 defmodule Bentley.ActivatorTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Bentley.Activator
+
+  setup do
+    previous_path = Application.get_env(:bentley, :suspicious_terms_file_path)
+
+    on_exit(fn ->
+      Application.put_env(:bentley, :suspicious_terms_file_path, previous_path)
+    end)
+
+    :ok
+  end
 
   test "define_activity marks token as active when no inactivity reason is found" do
     attrs = %{token_address: "abc123", active: false, inactivity_reason: "stale", name: "Alpha"}
@@ -73,5 +83,49 @@ defmodule Bentley.ActivatorTest do
 
     assert result.active == false
     assert result.inactivity_reason == "name_contains_foreign_alphabet"
+  end
+
+  test "define_activity marks token as inactive when name matches suspicious term" do
+    suspicious_terms_file_path = write_suspicious_terms_file(["rug", "^scam", "dump$"])
+    Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
+
+    result = Activator.define_activity(%{token_address: "abc123", name: "Mega Rug Launch"})
+
+    assert result.active == false
+    assert result.inactivity_reason == "suspicious_name"
+  end
+
+  test "define_activity applies word boundaries for suspicious term matching" do
+    suspicious_terms_file_path = write_suspicious_terms_file(["rug"])
+    Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
+
+    result = Activator.define_activity(%{token_address: "abc123", name: "Drugcoin"})
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity keeps ^ and $ anchors for suspicious term matching" do
+    suspicious_terms_file_path = write_suspicious_terms_file(["^scam", "dump$"])
+    Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
+
+    start_match = Activator.define_activity(%{token_address: "abc123", name: "scam alert"})
+    end_match = Activator.define_activity(%{token_address: "abc123", name: "mega dump"})
+
+    assert start_match.active == false
+    assert start_match.inactivity_reason == "suspicious_name"
+    assert end_match.active == false
+    assert end_match.inactivity_reason == "suspicious_name"
+  end
+
+  defp write_suspicious_terms_file(lines) do
+    file_path = Path.join(System.tmp_dir!(), "suspicious_terms_#{System.unique_integer([:positive])}.txt")
+    File.write!(file_path, Enum.join(lines, "\n"))
+
+    on_exit(fn ->
+      File.rm(file_path)
+    end)
+
+    file_path
   end
 end

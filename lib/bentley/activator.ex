@@ -31,6 +31,7 @@ defmodule Bentley.Activator do
       livestream_related?(attrs) -> "livestream_related"
       contains_space?(Map.get(attrs, :ticker)) -> "ticker_contains_space"
       name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
+      suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
       true -> nil
     end
@@ -76,6 +77,12 @@ defmodule Bentley.Activator do
   end
 
   defp invalid_name_charset?(_), do: false
+
+  defp suspicious_name?(name) when is_binary(name) do
+    Bentley.SuspiciousTermsCache.match?(name)
+  end
+
+  defp suspicious_name?(_), do: false
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(nil), do: true

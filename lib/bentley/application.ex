@@ -8,7 +8,8 @@ defmodule Bentley.Application do
 
     children = [
       Bentley.Repo,
-      Bentley.RateLimiter
+      Bentley.RateLimiter,
+      Bentley.SuspiciousTermsCache
     ] ++
       if(start_recorder?, do: [Bentley.Recorder], else: []) ++
       if(start_updater?, do: [Bentley.Updater], else: [])
