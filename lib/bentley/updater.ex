@@ -197,6 +197,8 @@ defmodule Bentley.Updater do
     |> Map.from_struct()
     |> Map.drop([:__meta__, :id, :inserted_at, :updated_at])
     |> Map.merge(incoming_attrs)
+    # Activity gating relies on the previous persisted check timestamp.
+    |> Map.put(:last_checked_at, token.last_checked_at)
   end
 
   defp fetch_and_update_token(token_address) do

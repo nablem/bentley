@@ -159,7 +159,7 @@ defmodule Bentley.UpdaterTest do
 
   test "update_token_from_details applies activity attrs from activator before update" do
     token_address = "reactivation_token"
-    created_on_chain_at = ~N[2024-03-03 03:03:03]
+    created_on_chain_at = NaiveDateTime.add(NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second), -(100 * 3_600), :second)
 
     %Token{}
     |> Token.changeset(%{
@@ -266,6 +266,29 @@ defmodule Bentley.UpdaterTest do
     assert token.active == false
     assert token.inactivity_reason == "token_undefined_per_api"
     assert token.last_checked_at != nil
+  end
+
+  test "update_token_from_details applies ticker format check only on first update" do
+    token_address = "first_update_ticker_space"
+
+    %Token{}
+    |> Token.changeset(%{token_address: token_address, active: true})
+    |> Repo.insert!()
+
+    details = %{"baseToken" => %{"name" => "Token", "symbol" => "BAD TICK"}}
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == false
+    assert token.inactivity_reason == "invalid_ticker_format"
+    assert token.last_checked_at != nil
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == true
+    assert token.inactivity_reason == nil
   end
 
   test "due_token_addresses only returns unchecked or stale tokens" do

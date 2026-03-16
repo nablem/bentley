@@ -14,7 +14,13 @@ defmodule Bentley.ActivatorTest do
   end
 
   test "define_activity marks token as active when no inactivity reason is found" do
-    attrs = %{token_address: "abc123", active: false, inactivity_reason: "stale", name: "Alpha"}
+    attrs = %{
+      token_address: "abc123",
+      active: false,
+      inactivity_reason: "stale",
+      name: "Alpha",
+      ticker: "ALP"
+    }
 
     result = Activator.define_activity(attrs)
 
@@ -32,7 +38,7 @@ defmodule Bentley.ActivatorTest do
   end
 
   test "define_activity marks token as inactive when liquidity is below 1000" do
-    attrs = %{token_address: "abc123", liquidity: 999.99, name: "Alpha"}
+    attrs = %{token_address: "abc123", liquidity: 999.99, name: "Alpha", ticker: "ALP"}
 
     result = Activator.define_activity(attrs)
 
@@ -41,7 +47,7 @@ defmodule Bentley.ActivatorTest do
   end
 
   test "define_activity marks token as inactive when boost is >= 500" do
-    attrs = %{token_address: "abc123", boost: 500, name: "Alpha"}
+    attrs = %{token_address: "abc123", boost: 500, name: "Alpha", ticker: "ALP"}
 
     result = Activator.define_activity(attrs)
 
@@ -50,7 +56,12 @@ defmodule Bentley.ActivatorTest do
   end
 
   test "define_activity marks token as inactive for kick website" do
-    attrs = %{token_address: "abc123", website_url: "https://kick.com/some-channel", name: "Alpha"}
+    attrs = %{
+      token_address: "abc123",
+      website_url: "https://kick.com/some-channel",
+      name: "Alpha",
+      ticker: "ALP"
+    }
 
     result = Activator.define_activity(attrs)
 
@@ -58,17 +69,41 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "livestream_related"
   end
 
-  test "define_activity marks token as inactive when ticker contains a space" do
+  test "define_activity marks token as inactive when name or ticker is nil" do
+    attrs = %{token_address: "abc123", name: nil, ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "missing_name_or_ticker"
+  end
+
+  test "define_activity marks token as inactive when ticker format is invalid" do
     attrs = %{token_address: "abc123", ticker: "AL P", name: "Alpha"}
 
     result = Activator.define_activity(attrs)
 
     assert result.active == false
-    assert result.inactivity_reason == "ticker_contains_space"
+    assert result.inactivity_reason == "invalid_ticker_format"
+  end
+
+  test "define_activity marks token as inactive when age is above 840 hours" do
+    attrs = %{
+      token_address: "abc123",
+      name: "Alpha",
+      ticker: "ALP",
+      created_on_chain_at: NaiveDateTime.add(NaiveDateTime.utc_now(), -(841 * 3_600), :second),
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "age_above_840h"
   end
 
   test "define_activity marks token as inactive when name is longer than 30 chars" do
-    attrs = %{token_address: "abc123", name: "This name is definitely over thirty chars"}
+    attrs = %{token_address: "abc123", ticker: "ALP", name: "This name is definitely over thirty chars"}
 
     result = Activator.define_activity(attrs)
 
@@ -77,7 +112,7 @@ defmodule Bentley.ActivatorTest do
   end
 
   test "define_activity marks token as inactive when name contains foreign alphabet" do
-    attrs = %{token_address: "abc123", name: "Token漢字"}
+    attrs = %{token_address: "abc123", ticker: "ALP", name: "Token漢字"}
 
     result = Activator.define_activity(attrs)
 
@@ -89,7 +124,7 @@ defmodule Bentley.ActivatorTest do
     suspicious_terms_file_path = write_suspicious_terms_file(["rug", "^scam", "dump$"])
     Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
 
-    result = Activator.define_activity(%{token_address: "abc123", name: "Mega Rug Launch"})
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "Mega Rug Launch"})
 
     assert result.active == false
     assert result.inactivity_reason == "suspicious_name"
@@ -99,7 +134,7 @@ defmodule Bentley.ActivatorTest do
     suspicious_terms_file_path = write_suspicious_terms_file(["rug"])
     Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
 
-    result = Activator.define_activity(%{token_address: "abc123", name: "Drugcoin"})
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "Drugcoin"})
 
     assert result.active == true
     assert result.inactivity_reason == nil
@@ -109,13 +144,40 @@ defmodule Bentley.ActivatorTest do
     suspicious_terms_file_path = write_suspicious_terms_file(["^scam", "dump$"])
     Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
 
-    start_match = Activator.define_activity(%{token_address: "abc123", name: "scam alert"})
-    end_match = Activator.define_activity(%{token_address: "abc123", name: "mega dump"})
+    start_match = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "scam alert"})
+    end_match = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "mega dump"})
 
     assert start_match.active == false
     assert start_match.inactivity_reason == "suspicious_name"
     assert end_match.active == false
     assert end_match.inactivity_reason == "suspicious_name"
+  end
+
+  test "define_activity skips token identity checks after first update" do
+    attrs = %{
+      token_address: "   ",
+      ticker: "AL P",
+      name: "This name is definitely over thirty chars",
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity still applies non-identity checks after first update" do
+    attrs = %{
+      token_address: "   ",
+      liquidity: 999.0,
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "low_liquidity"
   end
 
   defp write_suspicious_terms_file(lines) do
