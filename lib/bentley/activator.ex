@@ -30,6 +30,7 @@ defmodule Bentley.Activator do
       first_update? and blank?(Map.get(attrs, :token_address)) -> "missing_token_address"
       first_update? and missing_name_or_ticker?(attrs) -> "missing_name_or_ticker"
       first_update? and invalid_ticker_format?(Map.get(attrs, :ticker)) -> "invalid_ticker_format"
+      invalid_market_cap?(Map.get(attrs, :created_on_chain_at), Map.get(attrs, :market_cap)) -> "invalid_market_cap"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_840h"
@@ -52,6 +53,14 @@ defmodule Bentley.Activator do
   end
 
   defp invalid_ticker_format?(_), do: false
+
+  defp invalid_market_cap?(created_on_chain_at, market_cap)
+       when is_struct(created_on_chain_at, NaiveDateTime) and is_number(market_cap) do
+    age_seconds = NaiveDateTime.diff(current_time(), created_on_chain_at, :second)
+    age_seconds >= 0 and age_seconds < 3_600 and market_cap > 50_000_000
+  end
+
+  defp invalid_market_cap?(_, _), do: false
 
   defp low_liquidity?(liquidity) when is_number(liquidity), do: liquidity < 1_000
   defp low_liquidity?(_), do: false

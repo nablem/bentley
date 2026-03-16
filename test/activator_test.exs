@@ -102,6 +102,38 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "age_above_840h"
   end
 
+  test "define_activity marks token as inactive when age is below 1 hour and market cap is above 50M" do
+    attrs = %{
+      token_address: "abc123",
+      name: "Alpha",
+      ticker: "ALP",
+      created_on_chain_at: NaiveDateTime.add(NaiveDateTime.utc_now(), -(30 * 60), :second),
+      market_cap: 50_000_001.0,
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "invalid_market_cap"
+  end
+
+  test "define_activity does not mark invalid market cap when age is above 1 hour" do
+    attrs = %{
+      token_address: "abc123",
+      name: "Alpha",
+      ticker: "ALP",
+      created_on_chain_at: NaiveDateTime.add(NaiveDateTime.utc_now(), -(2 * 3_600), :second),
+      market_cap: 50_000_001.0,
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive when name is longer than 30 chars" do
     attrs = %{token_address: "abc123", ticker: "ALP", name: "This name is definitely over thirty chars"}
 
