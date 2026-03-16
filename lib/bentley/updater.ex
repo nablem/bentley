@@ -14,7 +14,7 @@ defmodule Bentley.Updater do
 
   @details_api_base_url "https://api.dexscreener.com/tokens/v1/solana"
   @default_update_interval :timer.minutes(1)
-  @default_batch_size 30
+  @default_batch_size 45
 
   @high_volume_threshold 1_000.0
   @age_fast_hours 10.0
