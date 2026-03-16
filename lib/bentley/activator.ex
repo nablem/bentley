@@ -97,7 +97,7 @@ defmodule Bentley.Activator do
 
   defp age_above_limit?(_), do: false
 
-  defp name_too_long?(name) when is_binary(name), do: String.length(name) > 30
+  defp name_too_long?(name) when is_binary(name), do: String.length(name) > 35
   defp name_too_long?(_), do: false
 
   defp invalid_name_charset?(name) when is_binary(name) do
