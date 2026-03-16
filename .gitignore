@@ -30,6 +30,9 @@ priv/repo/*.db
 priv/repo/*.db-shm
 priv/repo/*.db-wal
 
+# Local text files (such as suspicious terms list)
+priv/repo/*.txt
+
 # Local migrations (requested to keep untracked)
 priv/repo/migrations/
 
