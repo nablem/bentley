@@ -24,6 +24,7 @@ defmodule Bentley.Schema.Token do
     field(:change_6h, :float)
     field(:change_24h, :float)
     field(:liquidity, :float)
+    field(:ath, :float)
     field(:last_checked_at, :naive_datetime)
 
     timestamps()
@@ -54,6 +55,7 @@ defmodule Bentley.Schema.Token do
       :change_6h,
       :change_24h,
       :liquidity,
+      :ath,
       :last_checked_at
     ])
     |> validate_required([:token_address])

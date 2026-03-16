@@ -196,6 +196,43 @@ defmodule Bentley.UpdaterTest do
     assert token.icon == "https://before.example/icon.png"
   end
 
+  test "update_token_from_details computes ath by comparing market caps" do
+    token_address = "ath_test_token"
+
+    # Insert token with existing market cap and ath
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      market_cap: 100.0,
+      ath: 150.0
+    })
+    |> Repo.insert!()
+
+    # Update with higher market cap - ath should be updated to new value
+    details = %{
+      "marketCap" => 200.0,
+      "baseToken" => %{"name" => "Token", "symbol" => "TOK"}
+    }
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.market_cap == 200.0
+    assert token.ath == 200.0
+
+    # Update with lower market cap - ath should remain at previous high
+    details = %{
+      "marketCap" => 50.0,
+      "baseToken" => %{"name" => "Token", "symbol" => "TOK"}
+    }
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.market_cap == 50.0
+    assert token.ath == 200.0
+  end
+
   test "due_token_addresses only returns unchecked or stale tokens" do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     created_on_chain_at = NaiveDateTime.add(now, -30 * 3_600, :second)

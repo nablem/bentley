@@ -118,6 +118,7 @@ defmodule Bentley.Updater do
 
       token ->
         attrs = Enum.reject(attrs, fn {_key, value} -> is_nil(value) end) |> Map.new()
+        attrs = compute_ath(attrs, token)
         activity_attrs =
           token
           |> attrs_for_activity(attrs)
@@ -128,6 +129,25 @@ defmodule Bentley.Updater do
         token
         |> Token.changeset(attrs)
         |> Repo.update()
+    end
+  end
+
+  defp compute_ath(attrs, token) do
+    new_market_cap = attrs[:market_cap]
+    old_market_cap = token.market_cap
+
+    case {new_market_cap, old_market_cap} do
+      # If we have a new market_cap and it's higher than the old one, update ath
+      {new, old} when is_number(new) and is_number(old) and new > old ->
+        Map.put(attrs, :ath, new)
+
+      # If we have a new market_cap but no old one, use new as ath
+      {new, nil} when is_number(new) ->
+        Map.put(attrs, :ath, new)
+
+      # Otherwise, keep existing ath (don't modify attrs)
+      _ ->
+        attrs
     end
   end
 
