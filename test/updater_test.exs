@@ -247,7 +247,7 @@ defmodule Bentley.UpdaterTest do
   end
 
   test "handle_details_response marks token inactive when api returns an empty array" do
-    token_address = "not_found_token"
+    token_address = "random_token"
 
     %Token{}
     |> Token.changeset(%{
@@ -264,7 +264,7 @@ defmodule Bentley.UpdaterTest do
 
     token = Repo.get_by!(Token, token_address: token_address)
     assert token.active == false
-    assert token.inactivity_reason == "Not found"
+    assert token.inactivity_reason == "token_undefined_per_api"
     assert token.last_checked_at != nil
   end
 

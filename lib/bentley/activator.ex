@@ -20,9 +20,56 @@ defmodule Bentley.Activator do
   defp inactivity_reason(attrs) do
     cond do
       blank?(Map.get(attrs, :token_address)) -> "missing_token_address"
+      low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
+      high_boost?(Map.get(attrs, :boost)) -> "high_boost"
+      livestream_related?(attrs) -> "livestream_related"
+      contains_space?(Map.get(attrs, :ticker)) -> "ticker_contains_space"
+      name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
+      invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
       true -> nil
     end
   end
+
+  defp low_liquidity?(liquidity) when is_number(liquidity), do: liquidity < 1_000
+  defp low_liquidity?(_), do: false
+
+  defp high_boost?(boost) when is_number(boost), do: boost >= 500
+  defp high_boost?(_), do: false
+
+  defp livestream_related?(attrs) do
+    [Map.get(attrs, :website_url), Map.get(attrs, :url)]
+    |> Enum.any?(&livestream_domain?/1)
+  end
+
+  defp livestream_domain?(value) when is_binary(value) do
+    case URI.parse(value) do
+      %URI{host: host} when is_binary(host) ->
+        normalized_host =
+          host
+          |> String.downcase()
+          |> String.trim_leading("www.")
+
+        String.ends_with?(normalized_host, "kick.com") or
+          String.ends_with?(normalized_host, "twitch.tv")
+
+      _ ->
+        false
+    end
+  end
+
+  defp livestream_domain?(_), do: false
+
+  defp contains_space?(value) when is_binary(value), do: String.contains?(value, " ")
+  defp contains_space?(_), do: false
+
+  defp name_too_long?(name) when is_binary(name), do: String.length(name) > 30
+  defp name_too_long?(_), do: false
+
+  defp invalid_name_charset?(name) when is_binary(name) do
+    not String.match?(name, ~r/\A[a-zA-Z0-9\/_!?: -]+\z/)
+  end
+
+  defp invalid_name_charset?(_), do: false
 
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(nil), do: true
