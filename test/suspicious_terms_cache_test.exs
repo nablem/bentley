@@ -58,6 +58,13 @@ defmodule Bentley.SuspiciousTermsCacheTest do
     refute SuspiciousTermsCache.match?("clean token")
   end
 
+  test "match?/1 returns false when suspicious terms path is unset" do
+    Application.put_env(:bentley, :suspicious_terms_file_path, nil)
+    :ok = SuspiciousTermsCache.reload()
+
+    refute SuspiciousTermsCache.match?("rug token")
+  end
+
   defp write_suspicious_terms_file(lines) do
     file_path =
       Path.join(System.tmp_dir!(), "suspicious_terms_#{System.unique_integer([:positive])}.txt")

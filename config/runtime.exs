@@ -19,16 +19,9 @@ blank_to_nil = fn
     value
 end
 
-if is_nil(suspicious_terms_file_path) and config_env() != :test do
-  raise """
-  SUSPICIOUS_TERMS_FILE_PATH environment variable is required!
-
-  In development, add it to .env file:
-    SUSPICIOUS_TERMS_FILE_PATH=priv/repo/suspicious_terms.txt
-
-  In production, set it as an environment variable.
-  """
-end
+suspicious_terms_file_path = blank_to_nil.(suspicious_terms_file_path)
+notifiers_file_path = blank_to_nil.(notifiers_file_path)
+telegram_bot_token = blank_to_nil.(telegram_bot_token)
 
 if is_binary(suspicious_terms_file_path) and config_env() != :test and
      not File.exists?(suspicious_terms_file_path) do
@@ -42,7 +35,7 @@ if is_binary(suspicious_terms_file_path) and config_env() != :test and
   """
 end
 
-if is_binary(notifiers_file_path) and notifiers_file_path != "" and config_env() != :test and
+if is_binary(notifiers_file_path) and config_env() != :test and
      not File.exists?(notifiers_file_path) do
   raise """
   NOTIFIERS_FILE_PATH points to a missing file:
@@ -54,7 +47,7 @@ if is_binary(notifiers_file_path) and notifiers_file_path != "" and config_env()
   """
 end
 
-if is_binary(notifiers_file_path) and notifiers_file_path != "" and config_env() != :test and
+if is_binary(notifiers_file_path) and config_env() != :test and
      is_nil(telegram_bot_token) do
   raise """
   TELEGRAM_BOT_TOKEN environment variable is required when NOTIFIERS_FILE_PATH is set.
@@ -68,5 +61,5 @@ end
 
 config :bentley,
   suspicious_terms_file_path: suspicious_terms_file_path,
-  notifiers_file_path: blank_to_nil.(notifiers_file_path),
-  telegram_bot_token: blank_to_nil.(telegram_bot_token)
+  notifiers_file_path: notifiers_file_path,
+  telegram_bot_token: telegram_bot_token

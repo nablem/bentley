@@ -7,7 +7,7 @@ activity, and can notify Telegram channels when tokens match YAML-defined rules.
 
 The application expects these environment variables outside test:
 
-- `SUSPICIOUS_TERMS_FILE_PATH`: path to the suspicious terms text file.
+- `SUSPICIOUS_TERMS_FILE_PATH`: optional path to the suspicious terms text file.
 - `NOTIFIERS_FILE_PATH`: optional path to the YAML notifier definitions.
 - `TELEGRAM_BOT_TOKEN`: required when `NOTIFIERS_FILE_PATH` is set.
 
