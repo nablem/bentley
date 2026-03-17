@@ -26,6 +26,7 @@ defmodule Bentley.MixProject do
       {:ecto_sqlite3, "~> 0.17"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5"},
+      {:yaml_elixir, "~> 2.12"},
       {:mox, "~> 1.0", only: :test}
     ]
   end

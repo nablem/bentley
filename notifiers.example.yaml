@@ -1,0 +1,15 @@
+notifiers:
+  - id: fresh-volume
+    enabled: true
+    telegram_channel: "@my_channel"
+    poll_interval_seconds: 60
+    max_tokens_per_run: 10
+    criteria:
+      age_hours:
+        min: 0
+        max: 24
+      volume_1h:
+        min: 1000
+      market_cap:
+        min: 10000
+        max: 500000

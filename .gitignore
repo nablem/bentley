@@ -33,6 +33,9 @@ priv/repo/*.db-wal
 # suspicious terms list
 suspicious_terms.txt
 
+# notifiers config
+notifiers.yaml
+
 # Local migrations (requested to keep untracked)
 priv/repo/migrations/
 

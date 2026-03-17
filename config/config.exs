@@ -9,6 +9,13 @@ config :bentley,
 config :bentley,
   start_updater: true
 
+config :bentley,
+  start_notifiers: true,
+  notifiers_file_path: nil,
+  telegram_bot_token: nil,
+  telegram_api_base_url: "https://api.telegram.org",
+  telegram_client: Bentley.TelegramHTTPClient
+
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_dev.db",
   pool_size: 5
