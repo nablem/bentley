@@ -143,3 +143,36 @@ For a release deployment, the operational flow is the same as in development:
 edit the suspicious terms file on disk, run the reload command, then inspect the
 token through `Bentley.Repo` to confirm the token became inactive.
 
+### Docker
+
+If the release runs in a Docker container, use `docker exec` to reach the node:
+
+Start the container (usually via docker-compose or docker run):
+
+```bash
+docker run -d --name bentley_app -e SUSPICIOUS_TERMS_FILE_PATH=/app/suspicious_terms.txt bentley_image
+```
+
+Reload the suspicious terms cache without opening a shell:
+
+```bash
+docker exec bentley_app bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
+```
+
+Attach a remote shell for inspection:
+
+```bash
+docker exec -it bentley_app bin/bentley remote
+```
+
+Then use the same IEx commands as the native release:
+
+```elixir
+Bentley.SuspiciousTermsCache.reload()
+token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
+Map.take(token, [:token_address, :name, :active, :inactivity_reason])
+```
+
+The operational workflow is identical to the native release—only the invocation changes
+from `bin/bentley` to `docker exec <container_name> bin/bentley`.
+
