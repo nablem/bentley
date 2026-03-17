@@ -55,6 +55,7 @@ defmodule Bentley.Notifiers.Worker do
     |> select([t, _d], t)
     |> Repo.all()
     |> Enum.filter(&Criteria.match?(&1, definition.criteria, now))
+    |> filter_tokens_matching_dependencies(definition.depends_on_notifier_ids)
     |> Enum.sort_by(&sort_key(&1, now), :asc)
     |> Enum.take(definition.max_tokens_per_run)
   end
@@ -116,6 +117,35 @@ defmodule Bentley.Notifiers.Worker do
       {:ok, _delivery} -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp filter_tokens_matching_dependencies(tokens, []), do: tokens
+
+  defp filter_tokens_matching_dependencies(tokens, depends_on_notifier_ids) do
+    token_addresses = tokens |> Enum.map(& &1.token_address) |> Enum.uniq()
+
+    delivered_dependency_counts =
+      case token_addresses do
+        [] ->
+          %{}
+
+        _ ->
+          NotificationDelivery
+          |> where(
+            [d],
+            d.notifier_id in ^depends_on_notifier_ids and d.token_address in ^token_addresses
+          )
+          |> group_by([d], d.token_address)
+          |> select([d], {d.token_address, count(d.notifier_id, :distinct)})
+          |> Repo.all()
+          |> Map.new()
+      end
+
+    required_count = length(depends_on_notifier_ids)
+
+    Enum.filter(tokens, fn token ->
+      Map.get(delivered_dependency_counts, token.token_address, 0) == required_count
+    end)
   end
 
   defp sort_key(token, now) do

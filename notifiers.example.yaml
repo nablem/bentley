@@ -13,3 +13,15 @@ notifiers:
       market_cap:
         min: 10000
         max: 500000
+
+  - id: follow-up
+    enabled: true
+    telegram_channel: "@my_channel"
+    depends_on:
+      - fresh-volume
+    poll_interval_seconds: 60
+    max_tokens_per_run: 10
+    criteria:
+      age_hours:
+        min: 0
+        max: 24

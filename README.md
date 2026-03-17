@@ -34,6 +34,17 @@ notifiers:
       market_cap:
         min: 10000
         max: 500000
+
+  - id: follow-up
+    enabled: true
+    telegram_channel: "@my_channel"
+    depends_on: fresh-volume
+    poll_interval_seconds: 60
+    max_tokens_per_run: 10
+    criteria:
+      age_hours:
+        min: 0
+        max: 24
 ```
 
 Supported criteria keys are `age_hours`, `market_cap`, `liquidity`, `volume_1h`,
@@ -42,6 +53,10 @@ Each criterion accepts `min`, `max`, or both.
 
 Each notifier has its own `telegram_channel`. Multiple notifiers may point to the
 same Telegram channel, or to different channels.
+
+Notifiers can depend on other notifiers through `depends_on` (string or list of
+notifier IDs). A dependent notifier only sends a token after all referenced
+notifiers have already sent that token successfully.
 
 Each notifier sends a given token at most once after a successful Telegram delivery.
 If Telegram delivery fails, the token remains eligible for retry on the next poll.

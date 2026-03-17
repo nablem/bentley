@@ -83,6 +83,61 @@ defmodule Bentley.NotifiersTest do
     assert {:error, {:duplicate_notifier_id, "dup"}} = Loader.load_from_file(path)
   end
 
+  test "loader parses notifier dependencies" do
+    path =
+      write_yaml!("""
+      notifiers:
+        - id: first
+          telegram_channel: "@first"
+        - id: second
+          telegram_channel: "@second"
+          depends_on:
+            - first
+      """)
+
+    assert {:ok,
+            [
+              %Definition{id: "first", depends_on_notifier_ids: []},
+              %Definition{id: "second", depends_on_notifier_ids: ["first"]}
+            ]} = Loader.load_from_file(path)
+  end
+
+  test "loader rejects unknown, self, and cyclic dependencies" do
+    unknown_path =
+      write_yaml!("""
+      notifiers:
+        - id: first
+          telegram_channel: "@first"
+          depends_on: missing
+      """)
+
+    assert {:error, {:unknown_dependency, "first", "missing"}} = Loader.load_from_file(unknown_path)
+
+    self_path =
+      write_yaml!("""
+      notifiers:
+        - id: first
+          telegram_channel: "@first"
+          depends_on: first
+      """)
+
+    assert {:error, {:self_dependency, "first"}} = Loader.load_from_file(self_path)
+
+    cyclic_path =
+      write_yaml!("""
+      notifiers:
+        - id: first
+          telegram_channel: "@first"
+          depends_on: second
+        - id: second
+          telegram_channel: "@second"
+          depends_on: first
+      """)
+
+    assert {:error, {:cyclic_dependency, ["first", "second", "first"]}} =
+             Loader.load_from_file(cyclic_path)
+  end
+
   test "reload replaces workers when yaml definitions change" do
     path =
       write_yaml!("""
@@ -185,6 +240,50 @@ defmodule Bentley.NotifiersTest do
 
     assert {:ok, %{matched: 1, sent: 1, failed: 0}} = Worker.deliver_notifications(definition, now)
     assert Repo.aggregate(NotificationDelivery, :count, :id) == 1
+  end
+
+  test "dependent notifier sends only after prerequisite notifier sent the token" do
+    now = ~N[2026-03-17 12:00:00]
+
+    insert_token!(%{
+      token_address: "token-dependent",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Dependent",
+      ticker: "DEP",
+      volume_1h: 5_000.0
+    })
+
+    prerequisite_definition = %Definition{
+      id: "source",
+      telegram_channel: "@source",
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    dependent_definition = %Definition{
+      id: "target",
+      telegram_channel: "@target",
+      depends_on_notifier_ids: ["source"],
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    Bentley.TelegramClientMock
+    |> deny(:send_message, 2)
+
+    assert {:ok, %{matched: 0, sent: 0, failed: 0}} =
+             Worker.deliver_notifications(dependent_definition, now)
+
+    Bentley.TelegramClientMock
+    |> expect(:send_message, fn "@source", _message -> :ok end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(prerequisite_definition, now)
+
+    Bentley.TelegramClientMock
+    |> expect(:send_message, fn "@target", _message -> :ok end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(dependent_definition, now)
   end
 
   test "different notifiers can notify the same token independently" do
