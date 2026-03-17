@@ -61,3 +61,85 @@ notifiers have already sent that token successfully.
 Each notifier sends a given token at most once after a successful Telegram delivery.
 If Telegram delivery fails, the token remains eligible for retry on the next poll.
 
+## Live reload and inspection
+
+### Development with IEx
+
+To run the app in development and keep the node reachable from another shell,
+start it as a named node:
+
+```bash
+iex --sname bentley --cookie devcookie -S mix
+```
+
+In that shell, you can confirm the node name with:
+
+```elixir
+node()
+```
+
+From a second shell, attach a remote shell to the running node:
+
+```bash
+iex --sname admin --cookie devcookie --remsh bentley@YOUR_HOSTNAME
+```
+
+From the remote shell, reload the suspicious terms cache:
+
+```elixir
+Bentley.SuspiciousTermsCache.reload()
+```
+
+You can also inspect token state directly through the running Repo:
+
+```elixir
+token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
+Map.take(token, [:token_address, :name, :active, :inactivity_reason])
+```
+
+This is useful for testing the retroactive suspicious-term flow:
+
+1. Start the app with `iex --sname bentley --cookie devcookie -S mix`.
+2. Pick an active token from the logs.
+3. Confirm in the remote shell that it is currently `active: true`.
+4. Edit the suspicious terms file so one term matches that token's name.
+5. Run `Bentley.SuspiciousTermsCache.reload()` from the remote shell.
+6. Query the token again and verify it became `active: false` with `inactivity_reason: "suspicious_name"`.
+
+### Production release
+
+If the app is deployed as a release, build it with:
+
+```bash
+MIX_ENV=prod mix release
+```
+
+Start the release:
+
+```bash
+_build/prod/rel/bentley/bin/bentley start
+```
+
+Reload the suspicious terms cache without opening a shell:
+
+```bash
+_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
+```
+
+Attach a remote shell for inspection:
+
+```bash
+_build/prod/rel/bentley/bin/bentley remote
+```
+
+Then query the database through the live node:
+
+```elixir
+token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
+Map.take(token, [:token_address, :name, :active, :inactivity_reason])
+```
+
+For a release deployment, the operational flow is the same as in development:
+edit the suspicious terms file on disk, run the reload command, then inspect the
+token through `Bentley.Repo` to confirm the token became inactive.
+
