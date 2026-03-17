@@ -13,24 +13,8 @@
 #   (rug|scam)   matches either "rug" or "scam" with word boundaries
 
 # Common scam-related terms
-rug
-scam
 dump
 pump
-rug pull
-
-# Impersonation patterns
-fake
-clone
-copy
-official
-
-# High-risk keywords
-honeypot
-trap
-steal
-
-# Phrases
 gonna moon
 100x
 lamborghini
