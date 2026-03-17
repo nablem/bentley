@@ -1,0 +1,36 @@
+# Suspicious terms file for Bentley.SuspiciousTermsCache
+#
+# Each line is a regex pattern. Lines starting with # are comments.
+# Empty lines are ignored.
+#
+# Word boundaries (\b) are added automatically unless the pattern
+# starts with ^ or ends with $.
+#
+# Examples:
+#   rug          matches "rug", "mega rug launch", but not "drugcoin"
+#   ^scam        matches "scam alert" but not "total scam"
+#   dump$        matches "hard dump" but not "dumper"
+#   (rug|scam)   matches either "rug" or "scam" with word boundaries
+
+# Common scam-related terms
+rug
+scam
+dump
+pump
+rug pull
+
+# Impersonation patterns
+fake
+clone
+copy
+official
+
+# High-risk keywords
+honeypot
+trap
+steal
+
+# Phrases
+gonna moon
+100x
+lamborghini
