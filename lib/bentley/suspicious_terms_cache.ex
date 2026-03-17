@@ -9,6 +9,11 @@ defmodule Bentley.SuspiciousTermsCache do
   use GenServer
   require Logger
 
+  import Ecto.Query
+
+  alias Bentley.Repo
+  alias Bentley.Schema.Token
+
   @table :bentley_suspicious_terms_cache
   @patterns_key :patterns
   @path_key :path
@@ -34,6 +39,7 @@ defmodule Bentley.SuspiciousTermsCache do
       nil ->
         ensure_table()
         _ = reload_from_config()
+        recheck_active_tokens()
         :ok
 
       _pid ->
@@ -51,6 +57,7 @@ defmodule Bentley.SuspiciousTermsCache do
   @impl true
   def handle_call(:reload, _from, state) do
     _ = reload_from_config()
+    recheck_active_tokens()
     {:reply, :ok, state}
   end
 
@@ -85,6 +92,29 @@ defmodule Bentley.SuspiciousTermsCache do
         :ets.insert(@table, {@patterns_key, []})
         :ets.insert(@table, {@path_key, nil})
         :ok
+    end
+  end
+
+  defp recheck_active_tokens do
+    current_patterns = patterns()
+
+    if Process.whereis(Repo) != nil and current_patterns != [] do
+      suspicious_addresses =
+        Token
+        |> where([t], t.active == true and not is_nil(t.name))
+        |> Repo.all()
+        |> Enum.filter(fn t -> match?(t.name) end)
+        |> Enum.map(& &1.token_address)
+
+      if suspicious_addresses != [] do
+        Token
+        |> where([t], t.token_address in ^suspicious_addresses)
+        |> Repo.update_all(set: [active: false, inactivity_reason: "suspicious_name"])
+
+        Logger.info(
+          "[SuspiciousTermsCache] Marked #{length(suspicious_addresses)} token(s) inactive: suspicious_name"
+        )
+      end
     end
   end
 
