@@ -12,7 +12,7 @@ defmodule Bentley.Notifiers.Worker do
   alias Bentley.Repo
   alias Bentley.Schema.NotificationDelivery
   alias Bentley.Schema.Token
-  alias Bentley.TelegramClient
+  alias Bentley.Telegram.Client
 
   def start_link(%Definition{} = definition) do
     GenServer.start_link(__MODULE__, definition, name: via_tuple(definition.id))
@@ -87,7 +87,7 @@ defmodule Bentley.Notifiers.Worker do
   defp deliver_token(definition, token, now) do
     message = Formatter.format(definition, token, now)
 
-    case TelegramClient.send_message(definition.telegram_channel, message) do
+    case Client.send_message(definition.telegram_channel, message) do
       :ok ->
         record_delivery(definition, token, message, now)
 

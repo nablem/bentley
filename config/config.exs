@@ -14,7 +14,7 @@ config :bentley,
   notifiers_file_path: nil,
   telegram_bot_token: nil,
   telegram_api_base_url: "https://api.telegram.org",
-  telegram_client: Bentley.TelegramHTTPClient
+  telegram_client: Bentley.Telegram.HTTPClient
 
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_dev.db",

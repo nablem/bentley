@@ -1,7 +1,7 @@
-defmodule Bentley.TelegramHTTPClient do
+defmodule Bentley.Telegram.HTTPClient do
   @moduledoc false
 
-  @behaviour Bentley.TelegramClient
+  @behaviour Bentley.Telegram.Client
 
   @impl true
   def send_message(channel, message) when is_binary(channel) and is_binary(message) do

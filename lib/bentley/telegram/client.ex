@@ -1,4 +1,4 @@
-defmodule Bentley.TelegramClient do
+defmodule Bentley.Telegram.Client do
   @moduledoc """
   Behaviour and dispatch module for Telegram message delivery.
   """
@@ -11,6 +11,6 @@ defmodule Bentley.TelegramClient do
   end
 
   defp impl do
-    Application.get_env(:bentley, :telegram_client, Bentley.TelegramHTTPClient)
+    Application.get_env(:bentley, :telegram_client, Bentley.Telegram.HTTPClient)
   end
 end

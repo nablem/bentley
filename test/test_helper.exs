@@ -1,6 +1,6 @@
 ExUnit.start()
 
-Mox.defmock(Bentley.TelegramClientMock, for: Bentley.TelegramClient)
+Mox.defmock(Bentley.Telegram.ClientMock, for: Bentley.Telegram.Client)
 
 {:ok, _, _} =
   Ecto.Migrator.with_repo(Bentley.Repo, fn repo ->

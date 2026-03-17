@@ -24,7 +24,7 @@ defmodule Bentley.NotifiersTest do
     Repo.delete_all(NotificationDelivery)
     Repo.delete_all(Token)
 
-    Application.put_env(:bentley, :telegram_client, Bentley.TelegramClientMock)
+    Application.put_env(:bentley, :telegram_client, Bentley.Telegram.ClientMock)
     Application.put_env(:bentley, :notifiers_file_path, nil)
     :ok = Notifiers.reload()
 
@@ -191,7 +191,7 @@ defmodule Bentley.NotifiersTest do
       }
     }
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@alpha", message ->
       assert message =~ "Alpha"
       assert message =~ "token-alpha"
@@ -201,7 +201,7 @@ defmodule Bentley.NotifiersTest do
     assert {:ok, %{matched: 1, sent: 1, failed: 0}} = Worker.deliver_notifications(definition, now)
     assert Repo.aggregate(NotificationDelivery, :count, :id) == 1
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> deny(:send_message, 2)
 
     assert {:ok, %{matched: 0, sent: 0, failed: 0}} = Worker.deliver_notifications(definition, now)
@@ -229,13 +229,13 @@ defmodule Bentley.NotifiersTest do
       }
     }
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@retry", _message -> {:error, :timeout} end)
 
     assert {:ok, %{matched: 1, sent: 0, failed: 1}} = Worker.deliver_notifications(definition, now)
     assert Repo.aggregate(NotificationDelivery, :count, :id) == 0
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@retry", _message -> :ok end)
 
     assert {:ok, %{matched: 1, sent: 1, failed: 0}} = Worker.deliver_notifications(definition, now)
@@ -267,19 +267,19 @@ defmodule Bentley.NotifiersTest do
       criteria: %{age_hours: %{min: 0, max: 24}}
     }
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> deny(:send_message, 2)
 
     assert {:ok, %{matched: 0, sent: 0, failed: 0}} =
              Worker.deliver_notifications(dependent_definition, now)
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@source", _message -> :ok end)
 
     assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
              Worker.deliver_notifications(prerequisite_definition, now)
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@target", _message -> :ok end)
 
     assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
@@ -310,7 +310,7 @@ defmodule Bentley.NotifiersTest do
       criteria: %{age_hours: %{min: 0, max: 24}}
     }
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@first", _message -> :ok end)
     |> expect(:send_message, fn "@second", _message -> :ok end)
 
@@ -352,7 +352,7 @@ defmodule Bentley.NotifiersTest do
       criteria: %{age_hours: %{min: 0, max: 24}}
     }
 
-    Bentley.TelegramClientMock
+    Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@shared", _message -> :ok end)
     |> expect(:send_message, fn "@shared", _message -> :ok end)
 
