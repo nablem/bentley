@@ -13,10 +13,11 @@ defmodule Mix.Tasks.Sniper.Buy do
   """
 
   use Mix.Task
+  @requirements ["app.config"]
 
   @impl true
   def run(args) do
-    Mix.Task.run("app.start")
+    ensure_swap_dependencies_started!()
 
     {options, positional, invalid} =
       OptionParser.parse(args,
@@ -64,4 +65,11 @@ defmodule Mix.Tasks.Sniper.Buy do
 
   defp maybe_put(keyword, _key, nil), do: keyword
   defp maybe_put(keyword, key, value), do: Keyword.put(keyword, key, value)
+
+  defp ensure_swap_dependencies_started! do
+    case Application.ensure_all_started(:req) do
+      {:ok, _started_apps} -> :ok
+      {:error, reason} -> Mix.raise("Failed to start swap dependencies: #{inspect(reason)}")
+    end
+  end
 end

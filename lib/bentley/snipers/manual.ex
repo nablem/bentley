@@ -36,6 +36,44 @@ defmodule Bentley.Snipers.Manual do
 
   def buy(_wallet_id, _token_address, _amount_usdc, _opts), do: {:error, :invalid_manual_buy_input}
 
+  @spec sell(String.t(), String.t(), number(), keyword()) :: {:ok, map()} | {:error, term()}
+  def sell(wallet_id, token_address, units, opts \\ [])
+
+  def sell(wallet_id, token_address, units, opts)
+      when is_binary(wallet_id) and is_binary(token_address) and is_number(units) do
+    with {:ok, normalized_wallet_id} <- normalize_string(wallet_id, :wallet_id),
+         {:ok, normalized_token_address} <- normalize_string(token_address, :token_address),
+         {:ok, normalized_units} <- normalize_units(units) do
+      slippage_bps = Keyword.get(opts, :slippage_bps, @default_slippage_bps)
+      max_slippage_percent = Keyword.get(opts, :max_slippage_percent)
+
+      executor().sell(%Token{token_address: normalized_token_address}, normalized_units, %{
+        sniper_id: "manual",
+        wallet_id: normalized_wallet_id,
+        trade_type: :sell,
+        units: normalized_units,
+        slippage_bps: slippage_bps,
+        max_slippage_percent: max_slippage_percent
+      })
+    end
+  end
+
+  def sell(_wallet_id, _token_address, _units, _opts), do: {:error, :invalid_manual_sell_input}
+
+  @spec token_balance(String.t(), String.t()) :: {:ok, number()} | {:error, term()}
+  def token_balance(wallet_id, token_address)
+      when is_binary(wallet_id) and is_binary(token_address) do
+    with {:ok, normalized_wallet_id} <- normalize_string(wallet_id, :wallet_id),
+         {:ok, normalized_token_address} <- normalize_string(token_address, :token_address) do
+      executor().token_balance(%Token{token_address: normalized_token_address}, %{
+        sniper_id: "manual",
+        wallet_id: normalized_wallet_id
+      })
+    end
+  end
+
+  def token_balance(_wallet_id, _token_address), do: {:error, :invalid_token_balance_input}
+
   defp executor do
     Application.get_env(:bentley, :sniper_executor, Bentley.Snipers.Executor.Noop)
   end
@@ -54,6 +92,10 @@ defmodule Bentley.Snipers.Manual do
     do: {:ok, amount_usdc}
 
   defp normalize_amount(_amount_usdc), do: {:error, :invalid_amount_usdc}
+
+  defp normalize_units(units) when is_integer(units) and units > 0, do: {:ok, units}
+  defp normalize_units(units) when is_float(units) and units > 0, do: {:ok, units}
+  defp normalize_units(_units), do: {:error, :invalid_units}
 
   defp to_usdc_base_units(amount_usdc) do
     amount_usdc_raw =
