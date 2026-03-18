@@ -103,9 +103,17 @@ defmodule Bentley.Snipers.PositionManager do
       {:ok, onchain_balance} when is_number(onchain_balance) and onchain_balance >= 0 ->
         cond do
           onchain_balance <= @epsilon ->
+            Logger.info(
+              "[Snipers] Reconciliation closing #{definition.id}/#{position.wallet_id}/#{position.token_address}: on-chain balance #{onchain_balance}"
+            )
+
             close_position(position, now)
 
           onchain_balance + @epsilon < position.remaining_units ->
+            Logger.info(
+              "[Snipers] Reconciliation adjusting #{definition.id}/#{position.wallet_id}/#{position.token_address}: remaining #{position.remaining_units} -> #{onchain_balance}"
+            )
+
             position
             |> SniperPosition.changeset(%{remaining_units: onchain_balance})
             |> Repo.update()
@@ -235,15 +243,25 @@ defmodule Bentley.Snipers.PositionManager do
 
     case %SniperPosition{} |> SniperPosition.changeset(attrs) |> Repo.insert() do
       {:ok, position} ->
-        insert_trade(position, %{
-          trade_type: "buy",
-          units: units,
-          amount_usd: buy_result[:amount_usd] || definition.buy_config.position_size_usd,
-          tx_signature: buy_result[:tx_signature],
-          market_cap: token.market_cap,
-          reason: "notifier_trigger",
-          executed_at: now
-        })
+        case insert_trade(position, %{
+            trade_type: "buy",
+            units: units,
+            amount_usd: buy_result[:amount_usd] || definition.buy_config.position_size_usd,
+            tx_signature: buy_result[:tx_signature],
+            market_cap: token.market_cap,
+            reason: "notifier_trigger",
+            executed_at: now
+          }) do
+          :ok ->
+            Logger.info(
+              "[Snipers] Opened position #{position.id} #{definition.id}/#{wallet_id}/#{token.token_address}: units #{units}, tx #{inspect(buy_result[:tx_signature])}"
+            )
+
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
+        end
 
       {:error, %Ecto.Changeset{} = changeset} ->
         if duplicate_open_position_error?(changeset) do
@@ -334,7 +352,13 @@ defmodule Bentley.Snipers.PositionManager do
           updated_position
         end)
         |> case do
-          {:ok, updated_position} -> {:ok, updated_position}
+          {:ok, updated_position} ->
+            Logger.info(
+              "[Snipers] Sold #{sold_units} units for #{definition.id}/#{position.wallet_id}/#{position.token_address} (tier #{inspect(tier_index)}, reason #{reason}), remaining #{updated_position.remaining_units}, status #{updated_position.status}, tx #{inspect(sell_result[:tx_signature])}"
+            )
+
+            {:ok, updated_position}
+
           {:error, reason} -> {:error, reason}
         end
 
