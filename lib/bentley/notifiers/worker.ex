@@ -12,6 +12,7 @@ defmodule Bentley.Notifiers.Worker do
   alias Bentley.Repo
   alias Bentley.Schema.NotificationDelivery
   alias Bentley.Schema.Token
+  alias Bentley.Snipers
   alias Bentley.Telegram.Client
 
   def start_link(%Definition{} = definition) do
@@ -89,7 +90,14 @@ defmodule Bentley.Notifiers.Worker do
 
     case Client.send_message(definition.telegram_channel, message) do
       :ok ->
-        record_delivery(definition, token, message, now)
+        case record_delivery(definition, token, message, now) do
+          :ok ->
+            maybe_trigger_snipers(definition.id, token)
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
+        end
 
       {:error, reason} ->
         Logger.error(
@@ -97,6 +105,16 @@ defmodule Bentley.Notifiers.Worker do
         )
 
         {:error, reason}
+    end
+  end
+
+  defp maybe_trigger_snipers(notifier_id, token) do
+    case Snipers.trigger_on_notification(notifier_id, token) do
+      :ok ->
+        :ok
+
+      {:error, :not_started} ->
+        :ok
     end
   end
 

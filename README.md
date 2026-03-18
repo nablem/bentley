@@ -9,7 +9,19 @@ The application expects these environment variables outside test:
 
 - `SUSPICIOUS_TERMS_FILE_PATH`: optional path to the suspicious terms text file.
 - `NOTIFIERS_FILE_PATH`: optional path to the YAML notifier definitions.
+- `SNIPERS_FILE_PATH`: optional path to the YAML sniper definitions.
 - `TELEGRAM_BOT_TOKEN`: required when `NOTIFIERS_FILE_PATH` is set.
+
+For Solana sniper executor integrations (buy/sell + wallet capital checks), use:
+
+- `JUPITER_API_KEY`: Jupiter API key used for quote/swap requests.
+- `SOLANA_WALLET_<wallet_id>`: private key for each sniper wallet ID.
+- `SOLANA_RPC_URL`: optional Solana RPC URL override (defaults to mainnet-beta public RPC).
+
+Example mapping:
+
+- `wallet_ids: [main]` in `snipers.yaml` uses `SOLANA_WALLET_main`.
+- `wallet_ids: [main, secondary]` in `snipers.yaml` uses both `SOLANA_WALLET_main` and `SOLANA_WALLET_secondary`.
 
 ## Notifier configuration
 
@@ -60,6 +72,75 @@ notifiers have already sent that token successfully.
 
 Each notifier sends a given token at most once after a successful Telegram delivery.
 If Telegram delivery fails, the token remains eligible for retry on the next poll.
+
+## Sniper configuration
+
+Sniper definitions are loaded from YAML at startup and can be reloaded at runtime
+with `Bentley.Snipers.reload/0`.
+
+Example:
+
+```yaml
+snipers:
+  - id: early-microcap-sniper
+    enabled: true
+    trigger_on_notifiers:
+      - fresh-volume
+    wallet_ids:
+      - main
+      - secondary
+    poll_interval_seconds: 120
+    buy_config:
+      enabled: true
+      position_size_usd: 100
+      slippage_bps: 50
+      min_wallet_usdc: 250
+    exit_tiers:
+      - market_cap: 50000
+        sell_percent: 25
+      - market_cap: 100000
+        sell_percent: 75
+    safety:
+      max_slippage_percent: 15
+      max_position_count: 10
+      stop_loss_percent: null
+      timeout_hours: null
+```
+
+`stop_loss_percent` and `timeout_hours` are disabled by default when omitted.
+`wallet_ids` supports one or more wallets per sniper definition. A notifier trigger
+attempts the same buy flow independently for each wallet in the list.
+For backward compatibility, a single `wallet_id` is still accepted and treated as
+`wallet_ids: [wallet_id]`.
+`buy_config.min_wallet_usdc` is optional and, when set, blocks buys unless the
+configured wallet has at least that USDC balance.
+`buy_config.position_size_usd` is interpreted as Solana USDC amount in human
+units (for example, `200` means `200.0` USDC). Before buy execution it is
+converted to base units for Jupiter/Solana (`200` -> `200_000_000`).
+By default, snipers use the live Jupiter executor for buy/sell operations.
+Exit tier `sell_percent` values are percentages of the initial buy amount.
+Exit tiers with `market_cap` below a position's entry market cap are skipped.
+If omitted, `poll_interval_seconds` defaults to `120` (2 minutes).
+
+### Manual live buy command
+
+You can trigger a one-off live buy directly from CLI:
+
+```bash
+mix sniper.buy <wallet_id> <token_address> <amount_usdc>
+```
+
+Example (`200` means `200.0` USDC):
+
+```bash
+mix sniper.buy mywallet DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263 200
+```
+
+Optional flags:
+
+```bash
+mix sniper.buy mywallet <token_address> 200 --slippage-bps 50 --max-slippage-percent 15
+```
 
 ## Live reload and inspection
 

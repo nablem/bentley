@@ -27,6 +27,8 @@ defmodule Bentley.MixProject do
       {:jason, "~> 1.4"},
       {:req, "~> 0.5"},
       {:yaml_elixir, "~> 2.12"},
+      {:b58, "~> 1.0.3"},
+      {:ed25519, "~> 1.5"},
       {:mox, "~> 1.0", only: :test}
     ]
   end

@@ -1,0 +1,26 @@
+snipers:
+  - id: early-microcap-sniper
+    enabled: true
+    trigger_on_notifiers:
+      - early-microcap
+    wallet_ids:
+      - main
+      - second
+    poll_interval_seconds: 120
+    buy_config:
+      enabled: true
+      position_size_usd: 100 # 100 USDC (executor receives 100_000_000 base units)
+      slippage_bps: 50
+      min_wallet_usdc: 250
+    exit_tiers:
+      - market_cap: 50000
+        sell_percent: 25
+      - market_cap: 100000
+        sell_percent: 35
+      - market_cap: 250000
+        sell_percent: 40
+    safety:
+      max_slippage_percent: 15
+      max_position_count: 10
+      stop_loss_percent: null
+      timeout_hours: null

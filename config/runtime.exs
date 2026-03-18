@@ -6,6 +6,7 @@ end
 
 suspicious_terms_file_path = System.get_env("SUSPICIOUS_TERMS_FILE_PATH")
 notifiers_file_path = System.get_env("NOTIFIERS_FILE_PATH")
+snipers_file_path = System.get_env("SNIPERS_FILE_PATH")
 telegram_bot_token = System.get_env("TELEGRAM_BOT_TOKEN")
 
 blank_to_nil = fn
@@ -21,6 +22,7 @@ end
 
 suspicious_terms_file_path = blank_to_nil.(suspicious_terms_file_path)
 notifiers_file_path = blank_to_nil.(notifiers_file_path)
+snipers_file_path = blank_to_nil.(snipers_file_path)
 telegram_bot_token = blank_to_nil.(telegram_bot_token)
 
 if is_binary(suspicious_terms_file_path) and config_env() != :test and
@@ -47,6 +49,18 @@ if is_binary(notifiers_file_path) and config_env() != :test and
   """
 end
 
+if is_binary(snipers_file_path) and config_env() != :test and
+     not File.exists?(snipers_file_path) do
+  raise """
+  SNIPERS_FILE_PATH points to a missing file:
+    #{snipers_file_path}
+
+  Make sure the file exists and the path is correct.
+  Example:
+    SNIPERS_FILE_PATH=snipers.yml
+  """
+end
+
 if is_binary(notifiers_file_path) and config_env() != :test and
      is_nil(telegram_bot_token) do
   raise """
@@ -62,4 +76,5 @@ end
 config :bentley,
   suspicious_terms_file_path: suspicious_terms_file_path,
   notifiers_file_path: notifiers_file_path,
+  snipers_file_path: snipers_file_path,
   telegram_bot_token: telegram_bot_token

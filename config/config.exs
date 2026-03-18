@@ -12,9 +12,12 @@ config :bentley,
 config :bentley,
   start_notifiers: true,
   notifiers_file_path: nil,
+  start_snipers: true,
+  snipers_file_path: nil,
   telegram_bot_token: nil,
   telegram_api_base_url: "https://api.telegram.org",
-  telegram_client: Bentley.Telegram.HTTPClient
+  telegram_client: Bentley.Telegram.HTTPClient,
+  sniper_executor: Bentley.Snipers.Executor.Jupiter
 
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_dev.db",

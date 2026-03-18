@@ -2,6 +2,8 @@ defmodule Bentley.Schema.Token do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   schema "tokens" do
     field(:token_address, :string)
     field(:active, :boolean, default: true)
