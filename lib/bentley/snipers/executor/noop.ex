@@ -15,4 +15,7 @@ defmodule Bentley.Snipers.Executor.Noop do
 
   @impl true
   def wallet_usdc_balance(_options), do: {:error, :sniper_executor_not_configured}
+
+  @impl true
+  def token_balance(_token, _options), do: {:error, :sniper_executor_not_configured}
 end

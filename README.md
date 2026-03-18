@@ -120,6 +120,12 @@ converted to base units for Jupiter/Solana (`200` -> `200_000_000`).
 By default, snipers use the live Jupiter executor for buy/sell operations.
 Exit tier `sell_percent` values are percentages of the initial buy amount.
 Exit tiers with `market_cap` below a position's entry market cap are skipped.
+On each poll, open positions are reconciled against on-chain wallet balance for the token:
+- if on-chain balance is lower than managed remaining units, managed remaining is reduced;
+- if on-chain balance is zero, the position is closed;
+- if on-chain balance is higher (manual extra buy), extra units are treated as unmanaged and are not auto-sold.
+For each eligible tier, sell units are computed from cumulative initial-buy targets minus already sold units,
+then bounded by managed remaining units.
 If omitted, `poll_interval_seconds` defaults to `120` (2 minutes).
 
 ### Manual live buy command

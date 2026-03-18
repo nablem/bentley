@@ -28,6 +28,11 @@ defmodule Bentley.SnipersTest do
 
     Application.put_env(:bentley, :sniper_executor, Bentley.Snipers.ExecutorMock)
     Application.put_env(:bentley, :snipers_file_path, nil)
+
+    stub(Bentley.Snipers.ExecutorMock, :token_balance, fn _token, _options ->
+      {:ok, 1_000_000_000_000}
+    end)
+
     :ok = Snipers.reload()
 
     on_exit(fn ->
@@ -429,6 +434,179 @@ defmodule Bentley.SnipersTest do
 
     assert position.status == "closed"
     assert position.remaining_units <= 1.0e-9
+  end
+
+  test "reconciliation closes position when on-chain balance is zero" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-reconcile-close",
+        active: true,
+        market_cap: 80_000.0,
+        name: "ReconClose",
+        ticker: "RC"
+      })
+
+    definition = %Definition{
+      id: "reconcile-close",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      exit_tiers: [%{market_cap: 70_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: "reconcile-close",
+        notifier_id: "early-microcap",
+        token_address: "token-reconcile-close",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-reconcile-close"}, options ->
+      assert options.wallet_id == "main"
+      {:ok, 0}
+    end)
+    |> deny(:sell, 3)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 1, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "closed"
+    assert refreshed.remaining_units == 0.0
+  end
+
+  test "manual sells are reconciled before tier calculations based on initial buy" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-manual-sell",
+        active: true,
+        market_cap: 30_000.0,
+        name: "ManualSell",
+        ticker: "MS"
+      })
+
+    definition = %Definition{
+      id: "manual-sell",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      exit_tiers: [
+        %{market_cap: 20_000, sell_percent: 30},
+        %{market_cap: 30_000, sell_percent: 30},
+        %{market_cap: 40_000, sell_percent: 40}
+      ],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: "manual-sell",
+        notifier_id: "early-microcap",
+        token_address: "token-manual-sell",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 1000.0,
+        remaining_units: 1000.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-manual-sell"}, _options ->
+      # User manually sold half the position outside Bentley.
+      {:ok, 500}
+    end)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:sell, fn %Token{token_address: "token-manual-sell"}, units, _options ->
+      # Tier 1 target is 30% of initial and is fully covered by manual sell.
+      # Tier 2 cumulative target is 60% of initial, so sniper sells only 10% more.
+      assert_in_delta units, 100.0, 0.0001
+      {:ok, %{units: units, amount_usd: 20.0, tx_signature: "sell-manual-adjusted"}}
+    end)
+
+    assert {:ok, %{processed: 1, sells: 1, closed: 0, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert_in_delta refreshed.remaining_units, 400.0, 0.0001
+  end
+
+  test "manual buys do not increase managed remaining units" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-manual-buy",
+        active: true,
+        market_cap: 35_000.0,
+        name: "ManualBuy",
+        ticker: "MB"
+      })
+
+    definition = %Definition{
+      id: "manual-buy",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      exit_tiers: [
+        %{market_cap: 20_000, sell_percent: 30},
+        %{market_cap: 30_000, sell_percent: 30}
+      ],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: "manual-buy",
+        notifier_id: "early-microcap",
+        token_address: "token-manual-buy",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 1000.0,
+        remaining_units: 700.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-manual-buy"}, _options ->
+      # User manually bought more token outside Bentley.
+      {:ok, 900}
+    end)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:sell, fn %Token{token_address: "token-manual-buy"}, units, _options ->
+      # Managed state already sold 30% (remaining 700). Tier 2 should sell another 30% of initial.
+      assert_in_delta units, 300.0, 0.0001
+      {:ok, %{units: units, amount_usd: 60.0, tx_signature: "sell-managed-only"}}
+    end)
+
+    assert {:ok, %{processed: 1, sells: 1, closed: 0, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert_in_delta refreshed.remaining_units, 400.0, 0.0001
   end
 
   defp insert_token!(attrs) do

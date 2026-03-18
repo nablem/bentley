@@ -87,12 +87,52 @@ defmodule Bentley.Snipers.PositionManager do
         {:ok, %{sells: 0, closed: 0}}
 
       token ->
-        with {:ok, {position_after_risk, risk_sells, risk_closed}} <-
-               maybe_apply_risk_exits(definition, position, token, now),
+        with {:ok, {position_after_reconcile, reconcile_closed}} <-
+               maybe_reconcile_position(definition, position, token, now),
+             {:ok, {position_after_risk, risk_sells, risk_closed}} <-
+               maybe_apply_risk_exits(definition, position_after_reconcile, token, now),
              {:ok, {tier_sells, tier_closed}} <-
                maybe_apply_tier_exits(definition, position_after_risk, token, now) do
-          {:ok, %{sells: risk_sells + tier_sells, closed: risk_closed + tier_closed}}
+          {:ok, %{sells: risk_sells + tier_sells, closed: reconcile_closed + risk_closed + tier_closed}}
         end
+    end
+  end
+
+  defp maybe_reconcile_position(definition, %SniperPosition{} = position, %Token{} = token, now) do
+    case executor().token_balance(token, %{sniper_id: definition.id, wallet_id: position.wallet_id}) do
+      {:ok, onchain_balance} when is_number(onchain_balance) and onchain_balance >= 0 ->
+        cond do
+          onchain_balance <= @epsilon ->
+            close_position(position, now)
+
+          onchain_balance + @epsilon < position.remaining_units ->
+            position
+            |> SniperPosition.changeset(%{remaining_units: onchain_balance})
+            |> Repo.update()
+            |> case do
+              {:ok, updated_position} -> {:ok, {updated_position, 0}}
+              {:error, reason} -> {:error, reason}
+            end
+
+          true ->
+            {:ok, {position, 0}}
+        end
+
+      {:ok, onchain_balance} ->
+        {:error, {:invalid_token_balance, onchain_balance}}
+
+      {:error, reason} ->
+        {:error, {:token_balance_check_failed, reason}}
+    end
+  end
+
+  defp close_position(%SniperPosition{} = position, now) do
+    position
+    |> SniperPosition.changeset(%{remaining_units: 0.0, status: "closed", closed_at: now})
+    |> Repo.update()
+    |> case do
+      {:ok, updated_position} -> {:ok, {updated_position, 1}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -137,13 +177,8 @@ defmodule Bentley.Snipers.PositionManager do
             {:cont, {:ok, {current_position, sells, closed}}}
 
           true ->
-            nominal = current_position.initial_units * tier.sell_percent / 100
-            # If this tier would consume ≥99.5% of what remains, sell all remaining units
-            # to avoid leaving unredeemable dust that keeps the position open forever.
             units_to_sell =
-              if nominal >= current_position.remaining_units * 0.995,
-                do: current_position.remaining_units,
-                else: min(current_position.remaining_units, nominal)
+              calculate_tier_sell_units(definition.exit_tiers, tier_index, current_position)
 
             if units_to_sell <= @epsilon do
               {:cont, {:ok, {current_position, sells, closed}}}
@@ -313,6 +348,34 @@ defmodule Bentley.Snipers.PositionManager do
   end
 
   defp normalize_sold_units(_result, fallback_units), do: fallback_units
+
+  defp calculate_tier_sell_units(exit_tiers, tier_index, %SniperPosition{} = position) do
+    entry_market_cap = position.entry_market_cap || 0
+
+    cumulative_sell_percent =
+      exit_tiers
+      |> Enum.with_index()
+      |> Enum.reduce(0.0, fn {tier, index}, acc ->
+        if index <= tier_index and tier.market_cap > entry_market_cap do
+          acc + tier.sell_percent
+        else
+          acc
+        end
+      end)
+
+    target_sold_units = position.initial_units * cumulative_sell_percent / 100
+    already_sold_units = max(position.initial_units - position.remaining_units, 0.0)
+    nominal_units = max(target_sold_units - already_sold_units, 0.0)
+    bounded_units = min(position.remaining_units, nominal_units)
+
+    # If this tier would consume ≥99.5% of what remains, sell all remaining units
+    # to avoid leaving unredeemable dust that keeps the position open forever.
+    if bounded_units >= position.remaining_units * 0.995 do
+      position.remaining_units
+    else
+      bounded_units
+    end
+  end
 
   defp executed_tier_indices(position_id) do
     SniperTrade

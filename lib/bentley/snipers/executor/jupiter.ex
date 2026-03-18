@@ -25,13 +25,22 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       when is_integer(amount_usdc_raw) and amount_usdc_raw > 0 do
     with {:ok, wallet_id} <- wallet_id_from_options(options),
          {:ok, wallet} <- fetch_wallet(wallet_id),
+         {:ok, balance_before} <-
+           fetch_wallet_token_balance(wallet.public_key, token.token_address),
          {:ok, quote} <-
            get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps_from_options(options)),
          {:ok, tx_signature} <- execute_swap(quote, wallet),
-         {:ok, out_amount_raw} <- parse_raw_amount(Map.get(quote, "outAmount")) do
+         {:ok, balance_after} <-
+           fetch_wallet_token_balance(wallet.public_key, token.token_address) do
+      # Use the actual on-chain token balance delta as the authoritative unit count.
+      # Fall back to the quote outAmount estimate only if the delta is non-positive
+      # (guard against transient RPC lag on freshly confirmed transactions).
+      actual_delta = balance_after - balance_before
+      units = if actual_delta > 0, do: actual_delta, else: quote_out_amount(quote)
+
       {:ok,
        %{
-         units: out_amount_raw,
+         units: units,
          amount_usd: options[:amount_usdc] || usdc_from_raw(amount_usdc_raw),
          tx_signature: tx_signature
        }}
@@ -70,6 +79,17 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   end
 
   def wallet_usdc_balance(_options), do: {:error, :invalid_options}
+
+  @impl true
+  def token_balance(%Token{} = token, options) when is_map(options) do
+    with {:ok, wallet_id} <- wallet_id_from_options(options),
+         {:ok, wallet} <- fetch_wallet(wallet_id),
+         {:ok, raw_balance} <- fetch_wallet_token_balance(wallet.public_key, token.token_address) do
+      {:ok, raw_balance}
+    end
+  end
+
+  def token_balance(_token, _options), do: {:error, :invalid_options}
 
   defp wallet_id_from_options(%{wallet_id: wallet_id}) when is_binary(wallet_id) do
     case String.trim(wallet_id) do
@@ -172,8 +192,8 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   defp execute_swap(quote_response, wallet) do
     with {:ok, swap_tx_b64} <- get_swap_transaction(quote_response, wallet.public_key),
          {:ok, signed_tx_b64} <- sign_transaction(swap_tx_b64, wallet),
-         {:ok, tx_signature} <- send_transaction(signed_tx_b64) do
-      _ = confirm_transaction(tx_signature)
+         {:ok, tx_signature} <- send_transaction(signed_tx_b64),
+         :ok <- confirm_transaction(tx_signature) do
       {:ok, tx_signature}
     end
   end
@@ -247,33 +267,61 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     end
   end
 
-  defp confirm_transaction(tx_signature) do
+  @confirm_poll_interval_ms 1_000
+  @confirm_max_attempts 30
+
+  defp confirm_transaction(tx_signature, attempts \\ @confirm_max_attempts) do
     payload = %{
       "jsonrpc" => "2.0",
       "id" => 1,
       "method" => "getSignatureStatuses",
-      "params" => [[tx_signature]]
+      "params" => [[tx_signature], %{"searchTransactionHistory" => true}]
     }
 
-    Req.post(rpc_url(), json: payload)
-    |> case do
+    case Req.post(rpc_url(), json: payload) do
       {:ok, %{status: 200, body: %{"result" => %{"value" => [status]}}}} when is_map(status) ->
-        :ok
+        case Map.get(status, "confirmationStatus") do
+          conf when conf in ["confirmed", "finalized"] ->
+            :ok
+
+          _ when attempts > 0 ->
+            Process.sleep(@confirm_poll_interval_ms)
+            confirm_transaction(tx_signature, attempts - 1)
+
+          _ ->
+            {:error, :confirmation_timeout}
+        end
+
+      _ when attempts > 0 ->
+        Process.sleep(@confirm_poll_interval_ms)
+        confirm_transaction(tx_signature, attempts - 1)
 
       _ ->
-        # Confirmation is best-effort here; transaction submission already succeeded.
-        :ok
+        {:error, :confirmation_timeout}
+    end
+  end
+
+  defp quote_out_amount(quote) do
+    case parse_raw_amount(Map.get(quote, "outAmount")) do
+      {:ok, amount} -> amount
+      _ -> 0
     end
   end
 
   defp fetch_wallet_usdc_balance(wallet_public_key) do
+    with {:ok, raw_total} <- fetch_wallet_token_balance(wallet_public_key, @usdc_mint) do
+      {:ok, usdc_from_raw(raw_total)}
+    end
+  end
+
+  defp fetch_wallet_token_balance(wallet_public_key, mint) when is_binary(mint) do
     payload = %{
       "jsonrpc" => "2.0",
       "id" => 1,
       "method" => "getTokenAccountsByOwner",
       "params" => [
         Base58.encode(wallet_public_key),
-        %{"mint" => @usdc_mint},
+        %{"mint" => mint},
         %{"encoding" => "jsonParsed"}
       ]
     }
@@ -282,7 +330,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     |> case do
       {:ok, %{status: 200, body: %{"result" => %{"value" => accounts}}}} when is_list(accounts) ->
         raw_total = Enum.reduce(accounts, 0, fn account, acc -> acc + account_raw_amount(account) end)
-        {:ok, usdc_from_raw(raw_total)}
+        {:ok, raw_total}
 
       {:ok, %{status: 200, body: %{"error" => error}}} ->
         {:error, {:wallet_balance_rpc_error, error}}

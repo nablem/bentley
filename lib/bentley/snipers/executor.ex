@@ -22,4 +22,5 @@ defmodule Bentley.Snipers.Executor do
   @callback buy(struct(), pos_integer(), options()) :: {:ok, trade_result()} | {:error, term()}
   @callback sell(struct(), number(), options()) :: {:ok, trade_result()} | {:error, term()}
   @callback wallet_usdc_balance(options()) :: {:ok, number()} | {:error, term()}
+  @callback token_balance(struct(), options()) :: {:ok, number()} | {:error, term()}
 end
