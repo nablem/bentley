@@ -148,6 +148,34 @@ Optional flags:
 mix sniper.buy mywallet <token_address> 200 --slippage-bps 50 --max-slippage-percent 15
 ```
 
+### Manual live sell command
+
+You can trigger a one-off live sell directly from CLI:
+
+```bash
+mix sniper.sell <wallet_id> <token_address> <units>
+```
+
+`<units>` is raw token base units (on-chain amount, not UI-decimal amount).
+
+Example:
+
+```bash
+mix sniper.sell mywallet DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263 150000
+```
+
+To sell the full wallet token balance for that token:
+
+```bash
+mix sniper.sell mywallet <token_address> --all
+```
+
+Optional flags:
+
+```bash
+mix sniper.sell mywallet <token_address> --all --slippage-bps 50 --max-slippage-percent 15
+```
+
 ## Live reload and inspection
 
 ### Development with IEx
