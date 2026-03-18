@@ -12,6 +12,8 @@ defmodule Bentley.Snipers.PositionManager do
 
   @epsilon 1.0e-9
   @usdc_base_unit_scale 1_000_000
+  @default_reconcile_zero_close_grace_seconds 60
+  @default_reconcile_zero_recheck_delay_ms 750
 
   @spec open_position(Definition.t(), String.t(), Token.t(), String.t(), NaiveDateTime.t()) ::
           :ok | {:error, term()}
@@ -103,11 +105,7 @@ defmodule Bentley.Snipers.PositionManager do
       {:ok, onchain_balance} when is_number(onchain_balance) and onchain_balance >= 0 ->
         cond do
           onchain_balance <= @epsilon ->
-            Logger.info(
-              "[Snipers] Reconciliation closing #{definition.id}/#{position.wallet_id}/#{position.token_address}: on-chain balance #{onchain_balance}"
-            )
-
-            close_position(position, now)
+            maybe_close_zero_balance(definition, position, token, now, onchain_balance)
 
           onchain_balance + @epsilon < position.remaining_units ->
             Logger.info(
@@ -133,6 +131,62 @@ defmodule Bentley.Snipers.PositionManager do
         {:error, {:token_balance_check_failed, reason}}
     end
   end
+
+  defp maybe_close_zero_balance(definition, %SniperPosition{} = position, %Token{} = token, now, onchain_balance) do
+    if within_zero_close_grace?(position, now) do
+      Logger.info(
+        "[Snipers] Reconciliation observed zero balance for #{definition.id}/#{position.wallet_id}/#{position.token_address} within grace window; keeping position open"
+      )
+
+      {:ok, {position, 0}}
+    else
+      case confirm_zero_balance(definition, position, token) do
+        {:ok, true} ->
+          Logger.info(
+            "[Snipers] Reconciliation closing #{definition.id}/#{position.wallet_id}/#{position.token_address}: on-chain balance #{onchain_balance} (confirmed)"
+          )
+
+          close_position(position, now)
+
+        {:ok, false} ->
+          Logger.info(
+            "[Snipers] Reconciliation zero-check recovered #{definition.id}/#{position.wallet_id}/#{position.token_address}; keeping position open"
+          )
+
+          {:ok, {position, 0}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp confirm_zero_balance(definition, %SniperPosition{} = position, %Token{} = token) do
+    delay_ms = reconcile_zero_recheck_delay_ms()
+    if delay_ms > 0, do: Process.sleep(delay_ms)
+
+    case executor().token_balance(token, %{sniper_id: definition.id, wallet_id: position.wallet_id}) do
+      {:ok, onchain_balance} when is_number(onchain_balance) and onchain_balance >= 0 ->
+        {:ok, onchain_balance <= @epsilon}
+
+      {:ok, onchain_balance} ->
+        {:error, {:invalid_token_balance, onchain_balance}}
+
+      {:error, reason} ->
+        {:error, {:token_balance_check_failed, reason}}
+    end
+  end
+
+  defp within_zero_close_grace?(%SniperPosition{opened_at: opened_at}, now)
+       when is_struct(opened_at, NaiveDateTime) and is_struct(now, NaiveDateTime) do
+    grace_seconds = reconcile_zero_close_grace_seconds()
+
+    grace_seconds > 0 and
+      NaiveDateTime.diff(now, opened_at, :second) >= 0 and
+      NaiveDateTime.diff(now, opened_at, :second) < grace_seconds
+  end
+
+  defp within_zero_close_grace?(_position, _now), do: false
 
   defp close_position(%SniperPosition{} = position, now) do
     position
@@ -482,6 +536,33 @@ defmodule Bentley.Snipers.PositionManager do
 
   defp current_time do
     NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+  end
+
+  defp reconcile_zero_close_grace_seconds do
+    env_non_neg_integer(
+      "SNIPER_RECONCILE_ZERO_CLOSE_GRACE_SECONDS",
+      @default_reconcile_zero_close_grace_seconds
+    )
+  end
+
+  defp reconcile_zero_recheck_delay_ms do
+    env_non_neg_integer(
+      "SNIPER_RECONCILE_ZERO_RECHECK_DELAY_MS",
+      @default_reconcile_zero_recheck_delay_ms
+    )
+  end
+
+  defp env_non_neg_integer(name, default) do
+    case System.get_env(name) do
+      value when is_binary(value) ->
+        case Integer.parse(String.trim(value)) do
+          {parsed, ""} when parsed >= 0 -> parsed
+          _ -> default
+        end
+
+      _ ->
+        default
+    end
   end
 
   defp usdc_to_base_units(amount_usdc) when is_number(amount_usdc) and amount_usdc > 0 do

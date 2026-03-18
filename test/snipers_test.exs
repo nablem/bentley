@@ -438,6 +438,7 @@ defmodule Bentley.SnipersTest do
 
   test "reconciliation closes position when on-chain balance is zero" do
     now = ~N[2026-03-18 14:00:00]
+    opened_at = ~N[2026-03-18 13:58:00]
 
     _token =
       insert_token!(%{
@@ -468,12 +469,12 @@ defmodule Bentley.SnipersTest do
         initial_units: 500.0,
         remaining_units: 500.0,
         status: "open",
-        opened_at: now
+        opened_at: opened_at
       })
       |> Repo.insert()
 
     Bentley.Snipers.ExecutorMock
-    |> expect(:token_balance, fn %Token{token_address: "token-reconcile-close"}, options ->
+    |> expect(:token_balance, 2, fn %Token{token_address: "token-reconcile-close"}, options ->
       assert options.wallet_id == "main"
       {:ok, 0}
     end)
@@ -485,6 +486,61 @@ defmodule Bentley.SnipersTest do
     refreshed = Repo.get!(SniperPosition, position.id)
     assert refreshed.status == "closed"
     assert refreshed.remaining_units == 0.0
+  end
+
+  test "reconciliation keeps position open when zero balance is within grace window" do
+    # Position opened 10 seconds before now — well inside the 60s grace window.
+    # The RPC returning 0 here is the false-close race condition (indexer lag after buy).
+    now = ~N[2026-03-18 14:00:00]
+    opened_at = ~N[2026-03-18 13:59:50]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-reconcile-grace",
+        active: true,
+        market_cap: 50_000.0,
+        name: "ReconGrace",
+        ticker: "RG"
+      })
+
+    definition = %Definition{
+      id: "reconcile-grace",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      exit_tiers: [%{market_cap: 70_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: "reconcile-grace",
+        notifier_id: "early-microcap",
+        token_address: "token-reconcile-grace",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: opened_at
+      })
+      |> Repo.insert()
+
+    # RPC returns 0, but only called once — no double-check because grace window exits early.
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, 1, fn %Token{token_address: "token-reconcile-grace"}, options ->
+      assert options.wallet_id == "main"
+      {:ok, 0}
+    end)
+    |> deny(:sell, 3)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert refreshed.remaining_units == 500.0
   end
 
   test "manual sells are reconciled before tier calculations based on initial buy" do

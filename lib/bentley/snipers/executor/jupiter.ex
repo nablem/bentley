@@ -17,6 +17,11 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @usdc_mint "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
   @default_slippage_bps 50
   @usdc_base_unit_scale 1_000_000
+  @default_rpc_retry_attempts 5
+  @default_rpc_retry_base_backoff_ms 250
+  @default_rpc_retry_max_backoff_ms 2_500
+  @default_send_tx_min_interval_ms 1_300
+  @send_tx_last_ms_key {__MODULE__, :send_tx_last_ms}
 
   @type wallet :: %{secret_key: binary(), public_key: binary()}
 
@@ -251,7 +256,9 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       ]
     }
 
-    Req.post(rpc_url(), json: payload)
+    with_send_transaction_rate_limit(fn ->
+      rpc_post(payload)
+    end)
     |> case do
       {:ok, %{status: 200, body: %{"result" => tx_signature}}} when is_binary(tx_signature) ->
         {:ok, tx_signature}
@@ -278,7 +285,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       "params" => [[tx_signature], %{"searchTransactionHistory" => true}]
     }
 
-    case Req.post(rpc_url(), json: payload) do
+    case rpc_post(payload) do
       {:ok, %{status: 200, body: %{"result" => %{"value" => [status]}}}} when is_map(status) ->
         case Map.get(status, "confirmationStatus") do
           conf when conf in ["confirmed", "finalized"] ->
@@ -326,7 +333,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       ]
     }
 
-    Req.post(rpc_url(), json: payload)
+    rpc_post(payload)
     |> case do
       {:ok, %{status: 200, body: %{"result" => %{"value" => accounts}}}} when is_list(accounts) ->
         raw_total = Enum.reduce(accounts, 0, fn account, acc -> acc + account_raw_amount(account) end)
@@ -377,6 +384,119 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
   defp rpc_url do
     System.get_env("SOLANA_RPC_URL") || @default_rpc_url
+  end
+
+  defp rpc_post(payload), do: rpc_post(payload, 0)
+
+  defp rpc_post(payload, attempt) do
+    case Req.post(rpc_url(), json: payload) do
+      {:ok, response} = result ->
+        if retryable_rpc_response?(response) and attempt < rpc_retry_attempts() do
+          sleep_rpc_backoff(attempt)
+          rpc_post(payload, attempt + 1)
+        else
+          result
+        end
+
+      {:error, reason} = result ->
+        if retryable_rpc_transport_error?(reason) and attempt < rpc_retry_attempts() do
+          sleep_rpc_backoff(attempt)
+          rpc_post(payload, attempt + 1)
+        else
+          result
+        end
+    end
+  end
+
+  defp retryable_rpc_response?(%{status: status}) when status in [429, 500, 502, 503, 504],
+    do: true
+
+  defp retryable_rpc_response?(%{status: 200, body: %{"error" => error}}),
+    do: retryable_rpc_error?(error)
+
+  defp retryable_rpc_response?(_response), do: false
+
+  defp retryable_rpc_error?(%{"code" => code, "message" => message}) do
+    code in [429, -32005] or rate_limited_message?(message)
+  end
+
+  defp retryable_rpc_error?(%{"message" => message}), do: rate_limited_message?(message)
+  defp retryable_rpc_error?(_error), do: false
+
+  defp retryable_rpc_transport_error?(reason) do
+    message = reason |> inspect() |> String.downcase()
+
+    String.contains?(message, "timeout") or
+      String.contains?(message, "closed") or
+      String.contains?(message, "econn") or
+      String.contains?(message, "rate limit")
+  end
+
+  defp rate_limited_message?(message) when is_binary(message) do
+    normalized = String.downcase(message)
+    String.contains?(normalized, "too many requests") or String.contains?(normalized, "rate limit")
+  end
+
+  defp rate_limited_message?(_message), do: false
+
+  defp sleep_rpc_backoff(attempt) do
+    base_ms = rpc_retry_base_backoff_ms()
+    max_ms = rpc_retry_max_backoff_ms()
+
+    delay_ms =
+      base_ms
+      |> Kernel.*(:math.pow(2, attempt))
+      |> round()
+      |> min(max_ms)
+
+    # Keep retries from synchronizing across concurrent workers.
+    jitter_ms = :rand.uniform(max(div(delay_ms, 3), 1))
+    Process.sleep(delay_ms + jitter_ms)
+  end
+
+  defp with_send_transaction_rate_limit(fun) when is_function(fun, 0) do
+    :global.trans({__MODULE__, :send_transaction_rate_limit}, fn ->
+      min_interval_ms = send_tx_min_interval_ms()
+      now_ms = System.monotonic_time(:millisecond)
+      last_send_ms = :persistent_term.get(@send_tx_last_ms_key, nil)
+
+      if is_integer(last_send_ms) do
+        sleep_ms = max(last_send_ms + min_interval_ms - now_ms, 0)
+        if sleep_ms > 0, do: Process.sleep(sleep_ms)
+      end
+
+      :persistent_term.put(@send_tx_last_ms_key, System.monotonic_time(:millisecond))
+      fun.()
+    end)
+  end
+
+  defp rpc_retry_attempts do
+    env_positive_integer("SNIPER_RPC_RETRY_ATTEMPTS", @default_rpc_retry_attempts)
+  end
+
+  defp rpc_retry_base_backoff_ms do
+    env_positive_integer("SNIPER_RPC_RETRY_BASE_BACKOFF_MS", @default_rpc_retry_base_backoff_ms)
+  end
+
+  defp rpc_retry_max_backoff_ms do
+    env_positive_integer("SNIPER_RPC_RETRY_MAX_BACKOFF_MS", @default_rpc_retry_max_backoff_ms)
+  end
+
+  defp send_tx_min_interval_ms do
+    env_positive_integer("SNIPER_SEND_TX_MIN_INTERVAL_MS", @default_send_tx_min_interval_ms)
+  end
+
+  defp env_positive_integer(name, default) do
+    case System.get_env(name) do
+      value when is_binary(value) ->
+        case Integer.parse(String.trim(value)) do
+          {parsed, ""} when parsed > 0 -> parsed
+          _ -> default
+        end
+
+      _ ->
+        default
+    end
   end
 
   # Helper for compact-u16 (Solana VarInt)
