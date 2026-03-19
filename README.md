@@ -230,6 +230,40 @@ definition = Enum.find(Bentley.Snipers.loaded_definitions(), &(&1.id == sniper_i
 Bentley.Snipers.PositionManager.process_open_positions(definition)
 ```
 
+### Close open positions in bulk (IEx helper)
+
+If you need to force-close positions for testing or recovery, you can close all
+currently open positions for one sniper, or all open positions in the database.
+
+1. Run IEx with the app:
+
+```bash
+iex -S mix
+```
+
+2. In IEx, run one of the following:
+
+```elixir
+import Ecto.Query
+
+now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+sniper_id = "early-microcap-sniper"
+
+# Close all OPEN positions for one sniper.
+Bentley.Repo.update_all(
+  from(p in Bentley.Schema.SniperPosition,
+    where: p.status == "open" and p.sniper_id == ^sniper_id
+  ),
+  set: [status: "closed", remaining_units: 0.0, closed_at: now]
+)
+
+# Close ALL OPEN positions across all snipers.
+Bentley.Repo.update_all(
+  from(p in Bentley.Schema.SniperPosition, where: p.status == "open"),
+  set: [status: "closed", remaining_units: 0.0, closed_at: now]
+)
+```
+
 ## Live reload and inspection
 
 ### Development with IEx

@@ -11,6 +11,7 @@ defmodule Bentley.SnipersTest do
   alias Bentley.Snipers.Definition
   alias Bentley.Snipers.Loader
   alias Bentley.Snipers.PositionManager
+  alias Bentley.Snipers.TelegramNotifier
 
   setup :set_mox_from_context
   setup :verify_on_exit!
@@ -143,6 +144,66 @@ defmodule Bentley.SnipersTest do
 
     assert {:error, {:insufficient_wallet_usdc, 250.0, 500}} =
              PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "telegram notifier formats large units with one decimal in millions" do
+    definition = %Definition{
+      id: "fmt-m",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just bought 0.1M $FMT"
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_success(definition, "main", token, 100_000_000_000)
+  end
+
+  test "telegram notifier formats medium units with one decimal in thousands" do
+    definition = %Definition{
+      id: "fmt-k",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just sold 0.7K $FMT"
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_sell_success(definition, "main", token, 700_000_000)
+  end
+
+  test "telegram notifier keeps dust in raw units" do
+    definition = %Definition{
+      id: "fmt-dust",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just sold 99999999 $FMT"
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_sell_success(definition, "main", token, 99_999_999)
   end
 
   test "open_position sends telegram message on buy success" do

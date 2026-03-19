@@ -6,6 +6,10 @@ defmodule Bentley.Snipers.TelegramNotifier do
   alias Bentley.Snipers.Definition
   alias Bentley.Telegram.Client
 
+  @token_decimals_scale 1_000_000
+  @thousand_tokens 100.0
+  @hundred_thousand_tokens 100_000.0
+
   @spec notify_buy_success(Definition.t(), String.t(), map(), number()) :: :ok
   def notify_buy_success(%Definition{} = definition, wallet_id, token, units)
       when is_binary(wallet_id) and is_map(token) and is_number(units) do
@@ -75,15 +79,29 @@ defmodule Bentley.Snipers.TelegramNotifier do
     end
   end
 
-  defp format_units(value) when is_integer(value), do: Integer.to_string(value)
+  defp format_units(value) when is_number(value) do
+    token_units = value / @token_decimals_scale
 
-  defp format_units(value) when is_float(value) do
-    if Float.round(value, 2) == Float.round(value, 0) do
-      value
-      |> round()
-      |> Integer.to_string()
-    else
-      :erlang.float_to_binary(value, decimals: 2)
+    cond do
+      token_units >= @hundred_thousand_tokens ->
+        format_with_suffix(token_units / 1_000_000, "M")
+
+      token_units >= @thousand_tokens ->
+        format_with_suffix(token_units / 1_000, "K")
+
+      true ->
+        value
+        |> round()
+        |> Integer.to_string()
     end
+  end
+
+  defp format_with_suffix(value, suffix) when is_number(value) and is_binary(suffix) do
+    formatted =
+      value
+      |> Float.round(1)
+      |> :erlang.float_to_binary(decimals: 1)
+
+    formatted <> suffix
   end
 end
