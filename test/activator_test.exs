@@ -46,6 +46,15 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "low_liquidity"
   end
 
+  test "define_activity marks token as inactive when 6-hour volume is zero" do
+    attrs = %{token_address: "abc123", volume_6h: 0.0, name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "zero_volume_6h"
+  end
+
   test "define_activity marks token as inactive when boost is >= 500" do
     attrs = %{token_address: "abc123", boost: 500, name: "Alpha", ticker: "ALP"}
 
@@ -210,6 +219,19 @@ defmodule Bentley.ActivatorTest do
 
     assert result.active == false
     assert result.inactivity_reason == "low_liquidity"
+  end
+
+  test "define_activity still applies zero 6-hour volume check after first update" do
+    attrs = %{
+      token_address: "   ",
+      volume_6h: 0,
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "zero_volume_6h"
   end
 
   defp write_suspicious_terms_file(lines) do
