@@ -246,6 +246,242 @@ defmodule Bentley.SnipersTest do
              PositionManager.process_open_positions(hd(Snipers.loaded_definitions()), now)
   end
 
+  test "trigger prioritizes highest min_wallet_usdc sniper per wallet" do
+    token =
+      insert_token!(%{
+        token_address: "token-priority-high",
+        active: true,
+        market_cap: 55_000.0,
+        name: "Priority High",
+        ticker: "PH"
+      })
+
+    path =
+      write_yaml!("""
+      snipers:
+        - id: low-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 100
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: high-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 500
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+      """)
+
+    Application.put_env(:bentley, :snipers_file_path, path)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, 1, fn options ->
+      assert options.wallet_id == "main"
+      assert options.sniper_id == "high-threshold"
+      {:ok, 600.0}
+    end)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, 1, fn %Token{token_address: "token-priority-high"}, 100_000_000, options ->
+      assert options.wallet_id == "main"
+      assert options.sniper_id == "high-threshold"
+      {:ok, %{units: 1000.0, amount_usd: 100.0, tx_signature: "buy-priority-high"}}
+    end)
+
+    assert :ok = Snipers.reload()
+    assert :ok = Snipers.trigger_on_notification("early-microcap", token)
+
+    wait_until(fn ->
+      Repo.aggregate(SniperPosition, :count, :id) == 1
+    end)
+
+    position = Repo.get_by!(SniperPosition, token_address: "token-priority-high", wallet_id: "main")
+    assert position.sniper_id == "high-threshold"
+  end
+
+  test "trigger falls back to lower min_wallet_usdc sniper when highest is insufficient" do
+    token =
+      insert_token!(%{
+        token_address: "token-priority-fallback",
+        active: true,
+        market_cap: 55_000.0,
+        name: "Priority Fallback",
+        ticker: "PF"
+      })
+
+    path =
+      write_yaml!("""
+      snipers:
+        - id: low-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 100
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: high-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 500
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+      """)
+
+    Application.put_env(:bentley, :snipers_file_path, path)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, 2, fn options ->
+      assert options.wallet_id == "main"
+
+      case options.sniper_id do
+        "high-threshold" -> {:ok, 200.0}
+        "low-threshold" -> {:ok, 200.0}
+      end
+    end)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, 1, fn %Token{token_address: "token-priority-fallback"}, 100_000_000, options ->
+      assert options.wallet_id == "main"
+      assert options.sniper_id == "low-threshold"
+      {:ok, %{units: 900.0, amount_usd: 100.0, tx_signature: "buy-priority-fallback"}}
+    end)
+
+    assert :ok = Snipers.reload()
+    assert :ok = Snipers.trigger_on_notification("early-microcap", token)
+
+    wait_until(fn ->
+      Repo.aggregate(SniperPosition, :count, :id) == 1
+    end)
+
+    position =
+      Repo.get_by!(
+        SniperPosition,
+        token_address: "token-priority-fallback",
+        wallet_id: "main"
+      )
+
+    assert position.sniper_id == "low-threshold"
+  end
+
+  test "trigger resolves overlapping wallet by priority while unique wallet keeps its only sniper" do
+    token =
+      insert_token!(%{
+        token_address: "token-priority-overlap",
+        active: true,
+        market_cap: 55_000.0,
+        name: "Priority Overlap",
+        ticker: "PO"
+      })
+
+    path =
+      write_yaml!("""
+      snipers:
+        - id: sniper-x
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+            - second
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 100
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: sniper-z
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 500
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+      """)
+
+    Application.put_env(:bentley, :snipers_file_path, path)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, 2, fn options ->
+      case {options.sniper_id, options.wallet_id} do
+        {"sniper-z", "main"} -> {:ok, 600.0}
+        {"sniper-x", "second"} -> {:ok, 600.0}
+      end
+    end)
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, 2, fn %Token{token_address: "token-priority-overlap"}, 100_000_000, options ->
+      assert options.amount_usdc == 100
+      assert options.amount_usdc_raw == 100_000_000
+
+      case {options.sniper_id, options.wallet_id} do
+        {"sniper-z", "main"} ->
+          {:ok, %{units: 1000.0, amount_usd: 100.0, tx_signature: "buy-overlap-main"}}
+
+        {"sniper-x", "second"} ->
+          {:ok, %{units: 1000.0, amount_usd: 100.0, tx_signature: "buy-overlap-second"}}
+      end
+    end)
+
+    assert :ok = Snipers.reload()
+    assert :ok = Snipers.trigger_on_notification("early-microcap", token)
+
+    wait_until(fn ->
+      Repo.aggregate(SniperPosition, :count, :id) == 2
+    end)
+
+    main_position =
+      Repo.get_by!(
+        SniperPosition,
+        token_address: "token-priority-overlap",
+        wallet_id: "main"
+      )
+
+    second_position =
+      Repo.get_by!(
+        SniperPosition,
+        token_address: "token-priority-overlap",
+        wallet_id: "second"
+      )
+
+    assert main_position.sniper_id == "sniper-z"
+    assert second_position.sniper_id == "sniper-x"
+  end
+
   test "trigger opens position and skips exit tiers below entry market cap" do
     now = ~N[2026-03-18 14:00:00]
 

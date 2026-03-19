@@ -79,36 +79,74 @@ defmodule Bentley.Snipers do
 
   @impl true
   def handle_cast({:trigger_on_notification, notifier_id, token}, state) do
-    state.notifier_index
-    |> Map.get(notifier_id, [])
-    |> Enum.each(fn sniper_id ->
-      case Map.get(state.definitions, sniper_id) do
-        nil ->
-          :ok
-
-        definition ->
-          Task.Supervisor.start_child(Bentley.Snipers.TaskSupervisor, fn ->
-            Enum.each(definition.wallet_ids, fn wallet_id ->
-              case PositionManager.open_position(definition, notifier_id, token, wallet_id) do
-                :ok ->
-                  :ok
-
-                {:error, :sniper_executor_not_configured} ->
-                  Logger.warning(
-                    "[Snipers] Skipping buy for #{definition.id}/#{wallet_id}: sniper executor is not configured"
-                  )
-
-                {:error, reason} ->
-                  Logger.error(
-                    "[Snipers] Failed to open position for #{definition.id}/#{wallet_id} on #{token.token_address}: #{inspect(reason)}"
-                  )
-              end
-            end)
-          end)
-      end
+    state
+    |> definitions_for_notifier(notifier_id)
+    |> wallet_candidates()
+    |> Enum.each(fn {wallet_id, candidates} ->
+      Task.Supervisor.start_child(Bentley.Snipers.TaskSupervisor, fn ->
+        process_wallet_candidates(candidates, notifier_id, token, wallet_id)
+      end)
     end)
 
     {:noreply, state}
+  end
+
+  defp definitions_for_notifier(state, notifier_id) do
+    state.notifier_index
+    |> Map.get(notifier_id, [])
+    |> Enum.map(&Map.get(state.definitions, &1))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(& &1.buy_config.enabled)
+  end
+
+  defp wallet_candidates(definitions) do
+    definitions
+    |> Enum.reduce(%{}, fn definition, acc ->
+      Enum.reduce(definition.wallet_ids, acc, fn wallet_id, inner_acc ->
+        Map.update(inner_acc, wallet_id, [definition], &[definition | &1])
+      end)
+    end)
+    |> Enum.map(fn {wallet_id, candidates} ->
+      sorted_candidates =
+        Enum.sort_by(candidates, fn definition ->
+          {-priority_min_wallet_usdc(definition), definition.id}
+        end)
+
+      {wallet_id, sorted_candidates}
+    end)
+  end
+
+  defp priority_min_wallet_usdc(definition) do
+    case definition.buy_config.min_wallet_usdc do
+      min_wallet_usdc when is_number(min_wallet_usdc) and min_wallet_usdc > 0 -> min_wallet_usdc
+      _ -> 0
+    end
+  end
+
+  defp process_wallet_candidates(candidates, notifier_id, token, wallet_id) do
+    Enum.reduce_while(candidates, :ok, fn definition, _acc ->
+      case PositionManager.open_position(definition, notifier_id, token, wallet_id) do
+        :ok ->
+          {:halt, :ok}
+
+        {:error, {:insufficient_wallet_usdc, _wallet_usdc_balance, _min_wallet_usdc}} ->
+          {:cont, :ok}
+
+        {:error, :sniper_executor_not_configured} ->
+          Logger.warning(
+            "[Snipers] Skipping buy for #{definition.id}/#{wallet_id}: sniper executor is not configured"
+          )
+
+          {:halt, :ok}
+
+        {:error, reason} ->
+          Logger.error(
+            "[Snipers] Failed to open position for #{definition.id}/#{wallet_id} on #{token.token_address}: #{inspect(reason)}"
+          )
+
+          {:halt, :ok}
+      end
+    end)
   end
 
   defp load_and_apply(state) do

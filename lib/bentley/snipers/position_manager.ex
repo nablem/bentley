@@ -504,9 +504,29 @@ defmodule Bentley.Snipers.PositionManager do
             {:error, {:invalid_wallet_usdc_balance, wallet_usdc_balance}}
 
           {:error, reason} ->
+            maybe_log_wallet_usdc_rate_limit(definition, wallet_id, reason)
             {:error, {:wallet_usdc_balance_check_failed, reason}}
         end
     end
+  end
+
+  defp maybe_log_wallet_usdc_rate_limit(definition, wallet_id, reason) do
+    if wallet_usdc_rate_limited?(reason) do
+      Logger.warning(
+        "[Snipers] wallet_usdc_balance rate limited for #{definition.id}/#{wallet_id}; retry backoff may delay trigger buy: #{inspect(reason)}"
+      )
+    end
+  end
+
+  defp wallet_usdc_rate_limited?(reason) do
+    normalized =
+      reason
+      |> inspect(limit: :infinity)
+      |> String.downcase()
+
+    String.contains?(normalized, "429") or
+      String.contains?(normalized, "rate limit") or
+      String.contains?(normalized, "too many requests")
   end
 
   defp duplicate_open_position_error?(%Ecto.Changeset{errors: errors}) do

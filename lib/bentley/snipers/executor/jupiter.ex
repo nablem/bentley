@@ -8,6 +8,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @behaviour Bentley.Snipers.Executor
 
   import Bitwise
+  require Logger
 
   alias Bentley.Schema.Token
   alias Bentley.Snipers.Env
@@ -389,10 +390,12 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   defp rpc_post(payload), do: rpc_post(payload, 0)
 
   defp rpc_post(payload, attempt) do
+    method = rpc_method(payload)
+
     case Req.post(rpc_url(), json: payload) do
       {:ok, response} = result ->
         if retryable_rpc_response?(response) and attempt < rpc_retry_attempts() do
-          sleep_rpc_backoff(attempt)
+          sleep_rpc_backoff(attempt, method, rpc_retry_reason(response))
           rpc_post(payload, attempt + 1)
         else
           result
@@ -400,7 +403,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
       {:error, reason} = result ->
         if retryable_rpc_transport_error?(reason) and attempt < rpc_retry_attempts() do
-          sleep_rpc_backoff(attempt)
+          sleep_rpc_backoff(attempt, method, "transport_error=#{inspect(reason)}")
           rpc_post(payload, attempt + 1)
         else
           result
@@ -439,7 +442,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
   defp rate_limited_message?(_message), do: false
 
-  defp sleep_rpc_backoff(attempt) do
+  defp sleep_rpc_backoff(attempt, method, reason) do
     base_ms = rpc_retry_base_backoff_ms()
     max_ms = rpc_retry_max_backoff_ms()
 
@@ -451,7 +454,24 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
     # Keep retries from synchronizing across concurrent workers.
     jitter_ms = :rand.uniform(max(div(delay_ms, 3), 1))
-    Process.sleep(delay_ms + jitter_ms)
+    total_sleep_ms = delay_ms + jitter_ms
+
+    Logger.warning(
+      "[Snipers] RPC retry method=#{method} attempt=#{attempt + 1}/#{rpc_retry_attempts()} sleep_ms=#{total_sleep_ms} reason=#{reason}"
+    )
+
+    Process.sleep(total_sleep_ms)
+  end
+
+  defp rpc_method(%{"method" => method}) when is_binary(method), do: method
+  defp rpc_method(_payload), do: "unknown"
+
+  defp rpc_retry_reason(%{status: status, body: %{"error" => error}}) do
+    "status=#{status} rpc_error=#{inspect(error)}"
+  end
+
+  defp rpc_retry_reason(%{status: status}) do
+    "status=#{status}"
   end
 
   defp with_send_transaction_rate_limit(fun) when is_function(fun, 0) do

@@ -114,6 +114,11 @@ For backward compatibility, a single `wallet_id` is still accepted and treated a
 `wallet_ids: [wallet_id]`.
 `buy_config.min_wallet_usdc` is optional and, when set, blocks buys unless the
 configured wallet has at least that USDC balance.
+If multiple snipers match the same notifier event for the same wallet, candidates
+are prioritized by `buy_config.min_wallet_usdc` (highest first), and fallback to
+lower thresholds only when the higher one fails with insufficient wallet USDC.
+This priority logic only applies to overlapping wallet+notifier matches; wallets
+with a single matching sniper are handled normally.
 `buy_config.position_size_usd` is interpreted as Solana USDC amount in human
 units (for example, `200` means `200.0` USDC). Before buy execution it is
 converted to base units for Jupiter/Solana (`200` -> `200_000_000`).
