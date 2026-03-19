@@ -97,6 +97,7 @@ defmodule Bentley.Updater do
       x_url: social_url(socials, "twitter"),
       telegram_url: social_url(socials, "telegram"),
       tiktok_url: social_url(socials, "tiktok"),
+      instagram_url: social_url(socials, "instagram"),
       discord_url: social_url(socials, "discord"),
       boost: normalize_integer(get_in(details, ["boosts", "active"])),
       created_on_chain_at: normalize_pair_created_at(details["pairCreatedAt"]),
