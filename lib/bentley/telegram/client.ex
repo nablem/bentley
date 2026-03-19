@@ -4,10 +4,17 @@ defmodule Bentley.Telegram.Client do
   """
 
   @callback send_message(String.t(), String.t()) :: :ok | {:error, term()}
+  @callback send_photo(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
 
   @spec send_message(String.t(), String.t()) :: :ok | {:error, term()}
   def send_message(channel, message) when is_binary(channel) and is_binary(message) do
     impl().send_message(channel, message)
+  end
+
+  @spec send_photo(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def send_photo(channel, photo_url, caption)
+      when is_binary(channel) and is_binary(photo_url) and is_binary(caption) do
+    impl().send_photo(channel, photo_url, caption)
   end
 
   defp impl do

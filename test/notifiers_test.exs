@@ -177,6 +177,7 @@ defmodule Bentley.NotifiersTest do
       created_on_chain_at: ~N[2026-03-17 10:00:00],
       name: "Alpha",
       ticker: "ALP",
+      url: "https://dexscreener.com/solana/token-alpha",
       volume_1h: 2_500.0,
       market_cap: 50_000.0,
       liquidity: 10_000.0
@@ -194,6 +195,9 @@ defmodule Bentley.NotifiersTest do
     Bentley.Telegram.ClientMock
     |> expect(:send_message, fn "@alpha", message ->
       assert message =~ "Alpha"
+      assert message =~ ~s(<a href=)
+      assert message =~ "DEX Screener"
+      assert message =~ "Jupiter"
       assert message =~ "token-alpha"
       :ok
     end)

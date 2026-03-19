@@ -88,7 +88,16 @@ defmodule Bentley.Notifiers.Worker do
   defp deliver_token(definition, token, now) do
     message = Formatter.format(definition, token, now)
 
-    case Client.send_message(definition.telegram_channel, message) do
+    telegram_result =
+      case token.icon do
+        icon when is_binary(icon) ->
+          Client.send_photo(definition.telegram_channel, icon, message)
+
+        _ ->
+          Client.send_message(definition.telegram_channel, message)
+      end
+
+    case telegram_result do
       :ok ->
         case record_delivery(definition, token, message, now) do
           :ok ->
