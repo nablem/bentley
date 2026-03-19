@@ -183,7 +183,7 @@ defmodule Bentley.UpdaterTest do
       discord_url: "https://discord.gg/before",
       boost: 9,
       created_on_chain_at: created_on_chain_at,
-      market_cap: 123.0,
+      market_cap: 3_123.0,
       volume_1h: 45.0,
       icon: "https://before.example/icon.png"
     })
@@ -205,7 +205,7 @@ defmodule Bentley.UpdaterTest do
     assert token.discord_url == "https://discord.gg/before"
     assert token.boost == 9
     assert token.created_on_chain_at == created_on_chain_at
-    assert token.market_cap == 123.0
+    assert token.market_cap == 3_123.0
     assert token.volume_1h == 45.0
     assert token.icon == "https://before.example/icon.png"
   end

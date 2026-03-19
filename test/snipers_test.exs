@@ -1149,6 +1149,144 @@ defmodule Bentley.SnipersTest do
              PositionManager.process_open_positions(definition, now)
   end
 
+  test "process_open_positions sells all when token row is missing" do
+    now = ~N[2026-03-18 14:00:00]
+
+    definition = %Definition{
+      id: "missing-token-sell-success",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-row-missing-success",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:sell, fn %Token{token_address: "token-row-missing-success"}, 500.0, _options ->
+      {:ok, %{units: 500.0, amount_usd: 12.0, tx_signature: "sell-missing-token-success"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just sold 500 token-row-missing-success"
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 1, closed: 1, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "closed"
+    assert refreshed.remaining_units == 0.0
+
+    trade = Repo.get_by!(SniperTrade, sniper_position_id: position.id, trade_type: "sell")
+    assert trade.reason == "token_row_missing"
+    assert trade.market_cap == nil
+  end
+
+  test "process_open_positions retries later when token row missing sell fails" do
+    now = ~N[2026-03-18 14:00:00]
+
+    definition = %Definition{
+      id: "missing-token-sell-failure",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-row-missing-failure",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:sell, fn %Token{token_address: "token-row-missing-failure"}, 500.0, _options ->
+      {:error, :no_route}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main failed to sell token-row-missing-failure (reason: :no_route)"
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 1}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert refreshed.remaining_units == 500.0
+
+    assert Repo.aggregate(SniperTrade, :count, :id) == 0
+  end
+
+  test "process_open_positions closes missing-token positions with zero remaining units without sell" do
+    now = ~N[2026-03-18 14:00:00]
+
+    definition = %Definition{
+      id: "missing-token-zero-remaining",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-row-missing-zero",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 0.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> deny(:sell, 3)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 1, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "closed"
+    assert refreshed.remaining_units == 0.0
+  end
+
   defp insert_token!(attrs) do
     %Token{}
     |> Token.changeset(attrs)

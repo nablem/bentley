@@ -91,7 +91,7 @@ defmodule Bentley.Snipers.PositionManager do
   defp process_position(definition, position, now) do
     case Repo.get_by(Token, token_address: position.token_address) do
       nil ->
-        {:ok, %{sells: 0, closed: 0}}
+        handle_missing_token_position(definition, position, now)
 
       token ->
         with {:ok, {position_after_reconcile, reconcile_closed}} <-
@@ -101,6 +101,32 @@ defmodule Bentley.Snipers.PositionManager do
              {:ok, {tier_sells, tier_closed}} <-
                maybe_apply_tier_exits(definition, position_after_risk, token, now) do
           {:ok, %{sells: risk_sells + tier_sells, closed: reconcile_closed + risk_closed + tier_closed}}
+        end
+    end
+  end
+
+  defp handle_missing_token_position(definition, %SniperPosition{} = position, now) do
+    cond do
+      position.remaining_units <= @epsilon ->
+        Logger.warning(
+          "[Snipers] Closing #{definition.id}/#{position.wallet_id}/#{position.token_address}: token row missing with zero remaining units"
+        )
+
+        case close_position(position, now) do
+          {:ok, {_updated_position, closed}} -> {:ok, %{sells: 0, closed: closed}}
+          {:error, reason} -> {:error, reason}
+        end
+
+      true ->
+        Logger.warning(
+          "[Snipers] Token row missing for #{definition.id}/#{position.wallet_id}/#{position.token_address}; attempting full liquidation"
+        )
+
+        synthetic_token = %Token{token_address: position.token_address}
+
+        case sell_all(definition, position, synthetic_token, "token_row_missing", now) do
+          {:ok, {_updated_position, sells, closed}} -> {:ok, %{sells: sells, closed: closed}}
+          {:error, reason} -> {:error, reason}
         end
     end
   end
