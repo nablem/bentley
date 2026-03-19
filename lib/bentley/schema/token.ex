@@ -12,6 +12,8 @@ defmodule Bentley.Schema.Token do
     field(:website_url, :string)
     field(:x_url, :string)
     field(:telegram_url, :string)
+    field(:tiktok_url, :string)
+    field(:discord_url, :string)
     field(:boost, :integer)
     field(:created_on_chain_at, :naive_datetime)
     field(:icon, :string)
@@ -43,6 +45,8 @@ defmodule Bentley.Schema.Token do
       :website_url,
       :x_url,
       :telegram_url,
+      :tiktok_url,
+      :discord_url,
       :boost,
       :created_on_chain_at,
       :icon,

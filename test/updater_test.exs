@@ -32,7 +32,9 @@ defmodule Bentley.UpdaterTest do
         "websites" => [%{"url" => "https://alpha.example"}],
         "socials" => [
           %{"type" => "twitter", "url" => "https://x.com/alpha"},
-          %{"type" => "telegram", "url" => "https://t.me/alpha"}
+          %{"type" => "telegram", "url" => "https://t.me/alpha"},
+          %{"type" => "tiktok", "url" => "https://tiktok.com/@alpha"},
+          %{"type" => "discord", "url" => "https://discord.gg/alpha"}
         ]
       }
     }
@@ -44,6 +46,8 @@ defmodule Bentley.UpdaterTest do
     assert token.website_url == "https://alpha.example"
     assert token.x_url == "https://x.com/alpha"
     assert token.telegram_url == "https://t.me/alpha"
+    assert token.tiktok_url == "https://tiktok.com/@alpha"
+    assert token.discord_url == "https://discord.gg/alpha"
     assert token.boost == 3
     assert token.created_on_chain_at == ~N[2023-11-14 22:13:20]
     assert token.name == "Alpha"
@@ -70,6 +74,8 @@ defmodule Bentley.UpdaterTest do
       website_url: "https://site.before",
       x_url: "https://x.com/before",
       telegram_url: "https://t.me/before",
+      tiktok_url: "https://tiktok.com/@before",
+      discord_url: "https://discord.gg/before",
       boost: 7,
       market_cap: 123.0,
       name: "Before",
@@ -93,6 +99,8 @@ defmodule Bentley.UpdaterTest do
     assert token.website_url == "https://site.before"
     assert token.x_url == "https://x.com/before"
     assert token.telegram_url == "https://t.me/before"
+    assert token.tiktok_url == "https://tiktok.com/@before"
+    assert token.discord_url == "https://discord.gg/before"
     assert token.boost == 7
     assert token.created_on_chain_at == ~N[2024-01-01 00:00:00]
     assert token.market_cap == 123.0
@@ -171,6 +179,8 @@ defmodule Bentley.UpdaterTest do
       website_url: "https://before.example",
       x_url: "https://x.com/before",
       telegram_url: "https://t.me/before",
+      tiktok_url: "https://tiktok.com/@before",
+      discord_url: "https://discord.gg/before",
       boost: 9,
       created_on_chain_at: created_on_chain_at,
       market_cap: 123.0,
@@ -191,6 +201,8 @@ defmodule Bentley.UpdaterTest do
     assert token.website_url == "https://before.example"
     assert token.x_url == "https://x.com/before"
     assert token.telegram_url == "https://t.me/before"
+    assert token.tiktok_url == "https://tiktok.com/@before"
+    assert token.discord_url == "https://discord.gg/before"
     assert token.boost == 9
     assert token.created_on_chain_at == created_on_chain_at
     assert token.market_cap == 123.0
