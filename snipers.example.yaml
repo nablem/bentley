@@ -6,6 +6,7 @@ snipers:
     wallet_ids:
       - main
       - second
+    telegram_channel: "@my_sniper_channel" # optional; sends buy/sell/failure sniper alerts
     poll_interval_seconds: 120
     buy_config:
       enabled: true

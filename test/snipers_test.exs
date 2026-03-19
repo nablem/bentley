@@ -21,13 +21,18 @@ defmodule Bentley.SnipersTest do
 
     previous_path = Application.get_env(:bentley, :snipers_file_path)
     previous_executor = Application.get_env(:bentley, :sniper_executor)
+    previous_client = Application.get_env(:bentley, :telegram_client)
 
     Repo.delete_all(SniperTrade)
     Repo.delete_all(SniperPosition)
     Repo.delete_all(Token)
 
     Application.put_env(:bentley, :sniper_executor, Bentley.Snipers.ExecutorMock)
+    Application.put_env(:bentley, :telegram_client, Bentley.Telegram.ClientMock)
     Application.put_env(:bentley, :snipers_file_path, nil)
+
+    stub(Bentley.Telegram.ClientMock, :send_message, fn _channel, _message -> :ok end)
+    stub(Bentley.Telegram.ClientMock, :send_photo, fn _channel, _photo_url, _caption -> :ok end)
 
     stub(Bentley.Snipers.ExecutorMock, :token_balance, fn _token, _options ->
       {:ok, 1_000_000_000_000}
@@ -37,6 +42,7 @@ defmodule Bentley.SnipersTest do
 
     on_exit(fn ->
       Application.put_env(:bentley, :sniper_executor, previous_executor)
+      Application.put_env(:bentley, :telegram_client, previous_client)
       Application.put_env(:bentley, :snipers_file_path, previous_path)
       _ = Snipers.reload()
     end)
@@ -136,6 +142,77 @@ defmodule Bentley.SnipersTest do
     |> deny(:buy, 3)
 
     assert {:error, {:insufficient_wallet_usdc, 250.0, 500}} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "open_position sends telegram message on buy success" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-success",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Success",
+        ticker: "BYS"
+      })
+
+    definition = %Definition{
+      id: "buy-success",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-success"}, 100_000_000, _options ->
+      {:ok, %{units: 1_000.0, amount_usd: 100.0, tx_signature: "buy-success"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just bought 1000 $BYS"
+      :ok
+    end)
+
+    assert :ok = PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "open_position sends telegram message on buy failure" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-failure",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Failure",
+        ticker: "BYF"
+      })
+
+    definition = %Definition{
+      id: "buy-failure",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-failure"}, 100_000_000, _options ->
+      {:error, :quote_failed}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main failed to buy $BYF (reason: :quote_failed)"
+      :ok
+    end)
+
+    assert {:error, :quote_failed} =
              PositionManager.open_position(definition, "early-microcap", token, "main", now)
   end
 
@@ -899,6 +976,116 @@ defmodule Bentley.SnipersTest do
     refreshed = Repo.get!(SniperPosition, position.id)
     assert refreshed.status == "open"
     assert_in_delta refreshed.remaining_units, 400.0, 0.0001
+  end
+
+  test "process_open_positions sends telegram message on sell success" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-sell-success",
+        active: true,
+        market_cap: 70_000.0,
+        name: "Sell Success",
+        ticker: "SYS"
+      })
+
+    definition = %Definition{
+      id: "sell-success",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, _position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-sell-success",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-sell-success"}, _options ->
+      {:ok, 500}
+    end)
+    |> expect(:sell, fn %Token{token_address: "token-sell-success"}, 500.0, _options ->
+      {:ok, %{units: 500.0, amount_usd: 150.0, tx_signature: "sell-success"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main just sold 500 $SYS"
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 1, closed: 1, failed: 0}} =
+             PositionManager.process_open_positions(definition, now)
+  end
+
+  test "process_open_positions sends telegram message on sell failure" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-sell-failure",
+        active: true,
+        market_cap: 70_000.0,
+        name: "Sell Failure",
+        ticker: "SYF"
+      })
+
+    definition = %Definition{
+      id: "sell-failure",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, _position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-sell-failure",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-sell-failure"}, _options ->
+      {:ok, 500}
+    end)
+    |> expect(:sell, fn %Token{token_address: "token-sell-failure"}, 500.0, _options ->
+      {:error, :sell_quote_failed}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main failed to sell $SYF (reason: :sell_quote_failed)"
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 1}} =
+             PositionManager.process_open_positions(definition, now)
   end
 
   defp insert_token!(attrs) do

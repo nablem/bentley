@@ -9,6 +9,7 @@ defmodule Bentley.Snipers.PositionManager do
   alias Bentley.Schema.SniperTrade
   alias Bentley.Schema.Token
   alias Bentley.Snipers.Definition
+  alias Bentley.Snipers.TelegramNotifier
 
   @epsilon 1.0e-9
   @usdc_base_unit_scale 1_000_000
@@ -49,6 +50,10 @@ defmodule Bentley.Snipers.PositionManager do
                  now
                ) do
           :ok
+        else
+          {:error, reason} = error ->
+            TelegramNotifier.notify_buy_failure(definition, wallet_id, token, reason)
+            error
         end
     end
   end
@@ -311,6 +316,8 @@ defmodule Bentley.Snipers.PositionManager do
               "[Snipers] Opened position #{position.id} #{definition.id}/#{wallet_id}/#{token.token_address}: units #{units}, tx #{inspect(buy_result[:tx_signature])}"
             )
 
+            TelegramNotifier.notify_buy_success(definition, wallet_id, token, units)
+
             :ok
 
           {:error, reason} ->
@@ -411,12 +418,17 @@ defmodule Bentley.Snipers.PositionManager do
               "[Snipers] Sold #{sold_units} units for #{definition.id}/#{position.wallet_id}/#{position.token_address} (tier #{inspect(tier_index)}, reason #{reason}), remaining #{updated_position.remaining_units}, status #{updated_position.status}, tx #{inspect(sell_result[:tx_signature])}"
             )
 
+            TelegramNotifier.notify_sell_success(definition, position.wallet_id, token, sold_units)
+
             {:ok, updated_position}
 
-          {:error, reason} -> {:error, reason}
+          {:error, reason} ->
+            TelegramNotifier.notify_sell_failure(definition, position.wallet_id, token, reason)
+            {:error, reason}
         end
 
       {:error, reason} ->
+        TelegramNotifier.notify_sell_failure(definition, position.wallet_id, token, reason)
         {:error, reason}
     end
   end

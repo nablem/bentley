@@ -181,6 +181,55 @@ Optional flags:
 mix sniper.sell mywallet <token_address> --all --slippage-bps 50 --max-slippage-percent 15
 ```
 
+### Force an immediate exit-tier sell (IEx test helper)
+
+If you want to test sell notifications immediately, do not set `initial_units` to `0`.
+Exit-tier sell size is based on the initial buy units, so `initial_units: 0` produces
+`0` sell units and no sell trade.
+
+Instead, force the position `entry_market_cap` to `0` and make sure the token
+`market_cap` is above your first exit tier.
+
+1. Run IEx with the app:
+
+```bash
+iex -S mix
+```
+
+2. In IEx, run:
+
+```elixir
+import Ecto.Query
+
+sniper_id = "early-microcap-sniper"
+wallet_id = "main"
+token_address = "PASTE_TOKEN_ADDRESS"
+
+position =
+  Bentley.Repo.get_by!(Bentley.Schema.SniperPosition,
+    sniper_id: sniper_id,
+    wallet_id: wallet_id,
+    token_address: token_address,
+    status: "open"
+  )
+
+# Force all tiers to be considered above entry.
+Bentley.Repo.update_all(
+  from(p in Bentley.Schema.SniperPosition, where: p.id == ^position.id),
+  set: [entry_market_cap: 0.0]
+)
+
+# Ensure token market cap is above your target exit tier(s).
+Bentley.Repo.update_all(
+  from(t in Bentley.Schema.Token, where: t.token_address == ^token_address),
+  set: [market_cap: 250_000.0]
+)
+
+# Process immediately (no need to wait for poll interval).
+definition = Enum.find(Bentley.Snipers.loaded_definitions(), &(&1.id == sniper_id))
+Bentley.Snipers.PositionManager.process_open_positions(definition)
+```
+
 ## Live reload and inspection
 
 ### Development with IEx

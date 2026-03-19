@@ -54,6 +54,7 @@ defmodule Bentley.Snipers.Loader do
          {:ok, enabled} <- fetch_boolean(entry, "enabled", true),
          {:ok, wallet_ids} <- fetch_wallet_ids(entry, id),
          {:ok, trigger_on_notifier_ids} <- fetch_trigger_on_notifiers(entry, id),
+          {:ok, telegram_channel} <- fetch_optional_string(entry, "telegram_channel", id),
          {:ok, poll_interval_ms} <- fetch_poll_interval_ms(entry, id),
          {:ok, buy_config} <- parse_buy_config(Map.get(entry, "buy_config", %{}), id),
          {:ok, exit_tiers} <- parse_exit_tiers(Map.get(entry, "exit_tiers"), id),
@@ -64,6 +65,7 @@ defmodule Bentley.Snipers.Loader do
          enabled: enabled,
          wallet_ids: wallet_ids,
          trigger_on_notifier_ids: trigger_on_notifier_ids,
+         telegram_channel: telegram_channel,
          poll_interval_ms: poll_interval_ms,
          buy_config: buy_config,
          exit_tiers: exit_tiers,
@@ -283,6 +285,20 @@ defmodule Bentley.Snipers.Loader do
 
       _ ->
         {:error, {:missing_required_field, context, key}}
+    end
+  end
+
+  defp fetch_optional_string(entry, key, context) do
+    case Map.get(entry, key) do
+      nil ->
+        {:ok, nil}
+
+      value when is_binary(value) ->
+        trimmed = String.trim(value)
+        if trimmed == "", do: {:error, {:invalid_string, context, key}}, else: {:ok, trimmed}
+
+      _ ->
+        {:error, {:invalid_string, context, key}}
     end
   end
 
