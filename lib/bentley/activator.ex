@@ -8,6 +8,8 @@ defmodule Bentley.Activator do
 
   require Logger
 
+  @min_market_cap_threshold 2_500.0
+
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
     case inactivity_reason(attrs) do
@@ -31,6 +33,7 @@ defmodule Bentley.Activator do
       first_update? and missing_name_or_ticker?(attrs) -> "missing_name_or_ticker"
       first_update? and invalid_ticker_format?(Map.get(attrs, :ticker)) -> "invalid_ticker_format"
       invalid_market_cap?(Map.get(attrs, :created_on_chain_at), Map.get(attrs, :market_cap)) -> "invalid_market_cap"
+      low_market_cap?(Map.get(attrs, :market_cap)) -> "market_cap_below_2_5k"
       zero_volume_6h?(Map.get(attrs, :volume_6h)) -> "zero_volume_6h"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
@@ -62,6 +65,11 @@ defmodule Bentley.Activator do
   end
 
   defp invalid_market_cap?(_, _), do: false
+
+  defp low_market_cap?(market_cap) when is_number(market_cap),
+    do: market_cap < @min_market_cap_threshold
+
+  defp low_market_cap?(_), do: false
 
   defp zero_volume_6h?(volume_6h) when is_number(volume_6h), do: volume_6h == 0
   defp zero_volume_6h?(_), do: false

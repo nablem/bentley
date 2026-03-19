@@ -46,6 +46,24 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "low_liquidity"
   end
 
+  test "define_activity marks token as inactive when market cap is below 2.5K" do
+    attrs = %{token_address: "abc123", market_cap: 2_499.99, name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "market_cap_below_2_5k"
+  end
+
+  test "define_activity does not mark token inactive when market cap is exactly 2.5K" do
+    attrs = %{token_address: "abc123", market_cap: 2_500.0, name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive when 6-hour volume is zero" do
     attrs = %{token_address: "abc123", volume_6h: 0.0, name: "Alpha", ticker: "ALP"}
 
@@ -219,6 +237,19 @@ defmodule Bentley.ActivatorTest do
 
     assert result.active == false
     assert result.inactivity_reason == "low_liquidity"
+  end
+
+  test "define_activity still applies low market cap check after first update" do
+    attrs = %{
+      token_address: "   ",
+      market_cap: 2_400.0,
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "market_cap_below_2_5k"
   end
 
   test "define_activity still applies zero 6-hour volume check after first update" do
