@@ -35,6 +35,7 @@ defmodule Bentley.Activator do
       invalid_market_cap?(Map.get(attrs, :created_on_chain_at), Map.get(attrs, :market_cap)) -> "invalid_market_cap"
       low_market_cap?(Map.get(attrs, :market_cap)) -> "market_cap_below_2_5k"
       zero_volume_6h?(Map.get(attrs, :volume_6h)) -> "zero_volume_6h"
+      tiktok_creator_profile?(Map.get(attrs, :tiktok_url)) -> "tiktok_creator_profile"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_840h"
@@ -73,6 +74,9 @@ defmodule Bentley.Activator do
 
   defp zero_volume_6h?(volume_6h) when is_number(volume_6h), do: volume_6h == 0
   defp zero_volume_6h?(_), do: false
+
+  defp tiktok_creator_profile?(tiktok_url) when is_binary(tiktok_url), do: String.contains?(tiktok_url, "@")
+  defp tiktok_creator_profile?(_), do: false
 
   defp low_liquidity?(liquidity) when is_number(liquidity), do: liquidity < 1_000
   defp low_liquidity?(_), do: false

@@ -73,6 +73,15 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "zero_volume_6h"
   end
 
+  test "define_activity marks token as inactive when tiktok_url contains creator handle" do
+    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/@alpha", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "tiktok_creator_profile"
+  end
+
   test "define_activity marks token as inactive when boost is >= 500" do
     attrs = %{token_address: "abc123", boost: 500, name: "Alpha", ticker: "ALP"}
 
@@ -263,6 +272,19 @@ defmodule Bentley.ActivatorTest do
 
     assert result.active == false
     assert result.inactivity_reason == "zero_volume_6h"
+  end
+
+  test "define_activity still applies tiktok creator profile check after first update" do
+    attrs = %{
+      token_address: "abc123",
+      tiktok_url: "https://www.tiktok.com/@alpha",
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "tiktok_creator_profile"
   end
 
   defp write_suspicious_terms_file(lines) do
