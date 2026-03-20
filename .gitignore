@@ -39,8 +39,5 @@ notifiers.yaml
 # snipers config
 snipers.yaml
 
-# Local migrations (requested to keep untracked)
-priv/repo/migrations/
-
 # Local VSCode settings
 .vscode/
