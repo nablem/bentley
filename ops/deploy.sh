@@ -142,6 +142,7 @@ ensure_runtime_file "${NOTIFIERS_FILE_PATH:-}" "notifiers"
 ensure_runtime_file "${SNIPERS_FILE_PATH:-}" "snipers"
 
 echo "==> Updating source from origin/$BRANCH"
+git config --global --add safe.directory "$APP_DIR"
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
