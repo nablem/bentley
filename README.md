@@ -278,73 +278,47 @@ Bentley.Repo.update_all(
 )
 ```
 
-## Live reload and inspection
+## Production release
 
-### Development with IEx
+The recommended deployment approach uses `ops/deploy.sh`, which is an idempotent
+script that handles first-time server bootstrap and all subsequent deploys. The
+templates in `ops/` provide the env file and systemd unit.
 
-To run the app in development and keep the node reachable from another shell,
-start it as a named node:
+### Step 1 — Configure the server env file
 
-```bash
-iex --sname bentley --cookie devcookie -S mix
-```
+All runtime configuration lives in `/etc/bentley/bentley.env`. The deploy script
+creates this file from `ops/bentley.env.example` on first run, then stops so you
+can fill in real values before proceeding.
 
-In that shell, you can confirm the node name with:
+All variables in the env file:
 
-```elixir
-node()
-```
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_PATH` | yes | Absolute path to the SQLite database file |
+| `TELEGRAM_BOT_TOKEN` | when `NOTIFIERS_FILE_PATH` is set | Telegram bot token |
+| `SUSPICIOUS_TERMS_FILE_PATH` | no | Path to suspicious terms text file |
+| `NOTIFIERS_FILE_PATH` | no | Path to notifiers YAML file |
+| `SNIPERS_FILE_PATH` | no | Path to snipers YAML file |
+| `JUPITER_API_KEY` | no | Jupiter API key for sniper buy/sell |
+| `SOLANA_RPC_URL` | no | Solana RPC URL (defaults to mainnet-beta public) |
+| `SOLANA_WALLET_<id>` | per sniper wallet | Private key for each configured wallet |
 
-From a second shell, attach a remote shell to the running node:
-
-```bash
-iex --sname admin --cookie devcookie --remsh bentley@YOUR_HOSTNAME
-```
-
-From the remote shell, reload the suspicious terms cache:
-
-```elixir
-Bentley.SuspiciousTermsCache.reload()
-```
-
-You can also inspect token state directly through the running Repo:
-
-```elixir
-token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
-Map.take(token, [:token_address, :name, :active, :inactivity_reason])
-```
-
-This is useful for testing the retroactive suspicious-term flow:
-
-1. Start the app with `iex --sname bentley --cookie devcookie -S mix`.
-2. Pick an active token from the logs.
-3. Confirm in the remote shell that it is currently `active: true`.
-4. Edit the suspicious terms file so one term matches that token's name.
-5. Run `Bentley.SuspiciousTermsCache.reload()` from the remote shell.
-6. Query the token again and verify it became `active: false` with `inactivity_reason: "suspicious_name"`.
-
-### Production release
-
-#### Loading production environment variables
-
-Use a dedicated production env file (for example, `/etc/bentley/bentley.env`) and
-load it before starting the release.
-
-Example file:
+Example `/etc/bentley/bentley.env`:
 
 ```bash
-SUSPICIOUS_TERMS_FILE_PATH=/opt/bentley/suspicious_terms.txt
-NOTIFIERS_FILE_PATH=/opt/bentley/notifiers.yaml
-SNIPERS_FILE_PATH=/opt/bentley/snipers.yaml
 DATABASE_PATH=/var/lib/bentley/bentley.db
+SUSPICIOUS_TERMS_FILE_PATH=/etc/bentley/suspicious_terms.txt
+NOTIFIERS_FILE_PATH=/etc/bentley/notifiers.yaml
+SNIPERS_FILE_PATH=/etc/bentley/snipers.yaml
 TELEGRAM_BOT_TOKEN=123456:replace_me
 JUPITER_API_KEY=replace_me
-SOLANA_WALLET_main=replace_me
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+SOLANA_WALLET_main=replace_me
 ```
 
-When `DATABASE_PATH` points to `/var/lib/bentley/bentley.db`, create and
-permission the database directory before first deploy:
+The parent directory of `DATABASE_PATH` must exist and be owned by the service
+user. The deploy script creates it automatically, but you can also create it
+manually if needed:
 
 ```bash
 sudo mkdir -p /var/lib/bentley
@@ -352,116 +326,82 @@ sudo chown bentley:bentley /var/lib/bentley
 sudo chmod 750 /var/lib/bentley
 ```
 
-Recommended permissions:
+### Step 2 — Deploy
+
+`ops/deploy.sh` is the single entry point for both first-time setup and ongoing
+deploys. It is idempotent — safe to re-run.
+
+On first run it will:
+1. Create the `bentley` service user if missing.
+2. Create `/etc/bentley/bentley.env` from the template and exit, prompting you to fill in secrets.
+3. Install the systemd unit from `ops/bentley.service.example` if missing and enable it.
+4. Create the `DATABASE_PATH` parent directory with correct ownership.
+5. Create empty files for any configured `SUSPICIOUS_TERMS_FILE_PATH`, `NOTIFIERS_FILE_PATH`, `SNIPERS_FILE_PATH` that are missing.
+6. Pull latest code, build the release, run migrations, restart the service.
+
+First-time setup:
 
 ```bash
-sudo chown root:root /etc/bentley/bentley.env
-sudo chmod 600 /etc/bentley/bentley.env
+# Clone repository.
+sudo mkdir -p /opt/bentley
+sudo chown "$USER":"$USER" /opt/bentley
+git clone <REPO_URL> /opt/bentley
+
+# Run deploy — will create env file from template and stop on first run.
+cd /opt/bentley
+chmod +x ops/deploy.sh
+./ops/deploy.sh
+
+# Edit env file with real values.
+sudo nano /etc/bentley/bentley.env
+
+# Run again — this time it builds, migrates, and starts the service.
+./ops/deploy.sh
 ```
 
-If using `systemd`, add this to the service:
-
-```ini
-[Service]
-EnvironmentFile=/etc/bentley/bentley.env
-WorkingDirectory=/opt/bentley/_build/prod/rel/bentley
-ExecStart=/opt/bentley/_build/prod/rel/bentley/bin/bentley foreground
-Restart=always
-```
-
-Apply service changes:
+Every subsequent deploy is the same single command:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart bentley
-sudo systemctl status bentley
+cd /opt/bentley && ./ops/deploy.sh
 ```
 
-If starting manually from a shell:
+### deploy.sh variables (all optional)
+
+| Variable | Default | Description |
+|---|---|---|
+| `APP_DIR` | `/opt/bentley` | Repo root on the server |
+| `BRANCH` | `main` | Git branch to deploy |
+| `SERVICE_NAME` | `bentley` | systemd service name |
+| `SERVICE_USER` | `bentley` | OS user to run the service |
+| `SERVICE_GROUP` | `bentley` | OS group for the service |
+| `ENV_FILE` | `/etc/bentley/bentley.env` | Path to the server env file |
+| `SERVICE_FILE` | `/etc/systemd/system/bentley.service` | Path to the systemd unit |
+| `SERVICE_TEMPLATE` | `$APP_DIR/ops/bentley.service.example` | Template for the systemd unit |
+| `ENV_TEMPLATE` | `$APP_DIR/ops/bentley.env.example` | Template for the env file |
+
+> `dev.example.env` is for local development only (creates `.env`). Never point
+> `ENV_FILE` at `dev.example.env` or `.env` — deploy will reject it.
+
+### Starting manually (without systemd)
+
+If you need to start the release from a shell directly:
 
 ```bash
 set -a
 source /etc/bentley/bentley.env
 set +a
-./_build/prod/rel/bentley/bin/bentley foreground
-```
-
-#### Quick server setup with templates
-
-This repository includes deployment templates you can copy to the server:
-
-- [ops/bentley.env.example](ops/bentley.env.example)
-- [ops/bentley.service.example](ops/bentley.service.example)
-- [ops/deploy.sh](ops/deploy.sh)
-
-Use [dev.example.env](dev.example.env) only for local `.env`. Do not point
-`ENV_FILE` in deploy to `dev.example.env` or `.env`.
-
-Recommended first-time setup on the server:
-
-```bash
-# 1) Clone repository once.
-sudo mkdir -p /opt/bentley
-sudo chown "$USER":"$USER" /opt/bentley
-git clone <REPO_URL> /opt/bentley
-
-# 2) Run deploy script once to bootstrap server resources.
 cd /opt/bentley
-chmod +x ops/deploy.sh
-APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ENV_FILE=/etc/bentley/bentley.env ./ops/deploy.sh
-
-# 3) Script will create /etc/bentley/bentley.env from template and exit on first run.
-sudo nano /etc/bentley/bentley.env
-
-# 4) Run again to build + migrate + start service.
-APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ENV_FILE=/etc/bentley/bentley.env ./ops/deploy.sh
+_build/prod/rel/bentley/bin/bentley foreground
 ```
 
-After that, each deploy is one command:
-
-```bash
-cd /opt/bentley
-APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
-```
-
-`ops/deploy.sh` accepts optional environment variables. If you omit them,
-these defaults are used:
-
-```bash
-APP_DIR=/opt/bentley
-BRANCH=main
-SERVICE_NAME=bentley
-SERVICE_USER=bentley
-SERVICE_GROUP=bentley
-ENV_FILE=/etc/bentley/bentley.env
-SERVICE_FILE=/etc/systemd/system/bentley.service
-SERVICE_TEMPLATE=/opt/bentley/ops/bentley.service.example
-ENV_TEMPLATE=/opt/bentley/ops/bentley.env.example
-```
-
-So the shortest form is:
-
-```bash
-cd /opt/bentley
-./ops/deploy.sh
-```
-
-When these variables are set, deploy also auto-creates missing runtime files:
-
-- `SUSPICIOUS_TERMS_FILE_PATH`
-- `NOTIFIERS_FILE_PATH`
-- `SNIPERS_FILE_PATH`
-
-Missing files are created as empty files at the configured paths.
-
-#### Sync notifier/sniper YAML + suspicious terms via rsync and reload
+### Sync notifier/sniper YAML + suspicious terms via rsync and reload
 
 If you keep `notifiers.yaml`, `snipers.yaml`, and `suspicious_terms.txt` in the
 project root locally, you can push only those files to the server and reload
 them without rebuilding the release.
 
-1. Ensure runtime paths in `/etc/bentley/bentley.env` point to the synced files,
-   for example:
+Ensure runtime paths in `/etc/bentley/bentley.env` point to the target directory
+on the server, for example:
 
 ```bash
 NOTIFIERS_FILE_PATH=/etc/bentley/notifiers.yaml
@@ -469,65 +409,21 @@ SNIPERS_FILE_PATH=/etc/bentley/snipers.yaml
 SUSPICIOUS_TERMS_FILE_PATH=/etc/bentley/suspicious_terms.txt
 ```
 
-2. From local machine, sync files to server:
+Then from your local machine, run:
 
 ```bash
-rsync -avz ./notifiers.yaml ./snipers.yaml ./suspicious_terms.txt user@your-server:/tmp/
+chmod +x ops/sync-config.sh
+./ops/sync-config.sh user@your-server
 ```
 
-3. On server, install files into place with consistent owner/mode:
+`ops/sync-config.sh` rsyncs the three files to the server and installs them with
+correct permissions (`root:bentley 640`), then triggers a live reload on the
+running release — no restart required.
 
-```bash
-sudo mkdir -p /etc/bentley
-sudo chown root:bentley /etc/bentley
-sudo chmod 750 /etc/bentley
+Optional overrides:
 
-sudo install -o root -g bentley -m 640 /tmp/notifiers.yaml /etc/bentley/notifiers.yaml
-sudo install -o root -g bentley -m 640 /tmp/snipers.yaml /etc/bentley/snipers.yaml
-sudo install -o root -g bentley -m 640 /tmp/suspicious_terms.txt /etc/bentley/suspicious_terms.txt
-```
-
-`root:bentley` + `640` keeps files non-world-readable while still allowing the
-`bentley` service user to read them.
-
-4. Reload definitions on the running release (no full restart required):
-
-```bash
-/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Notifiers.reload()"
-/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Snipers.reload()"
-/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
-```
-
-### Docker
-
-If the release runs in a Docker container, use `docker exec` to reach the node:
-
-Start the container (usually via docker-compose or docker run):
-
-```bash
-docker run -d --name bentley_app -e SUSPICIOUS_TERMS_FILE_PATH=/suspicious_terms.txt bentley_image
-```
-
-Reload the suspicious terms cache without opening a shell:
-
-```bash
-docker exec bentley_app bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
-```
-
-Attach a remote shell for inspection:
-
-```bash
-docker exec -it bentley_app bin/bentley remote
-```
-
-Then use the same IEx commands as the native release:
-
-```elixir
-Bentley.SuspiciousTermsCache.reload()
-token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
-Map.take(token, [:token_address, :name, :active, :inactivity_reason])
-```
-
-The operational workflow is identical to the native release—only the invocation changes
-from `bin/bentley` to `docker exec <container_name> bin/bentley`.
-
+| Variable | Default |
+|---|---|
+| `SERVER_CONFIG_DIR` | `/etc/bentley` |
+| `APP_RELEASE_BIN` | `/opt/bentley/_build/prod/rel/bentley/bin/bentley` |
+| `SERVICE_GROUP` | `bentley` |
