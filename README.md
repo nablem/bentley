@@ -391,7 +391,7 @@ set -a
 source /etc/bentley/bentley.env
 set +a
 cd /opt/bentley
-_build/prod/rel/bentley/bin/bentley foreground
+_build/prod/rel/bentley/bin/bentley start
 ```
 
 ### Sync notifier/sniper YAML + suspicious terms via rsync and reload
