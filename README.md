@@ -379,23 +379,23 @@ Recommended first-time setup on the server:
 
 ```bash
 sudo mkdir -p /etc/bentley
-sudo cp /opt/bentley/app/ops/bentley.env.example /etc/bentley/bentley.env
+sudo cp /opt/bentley/ops/bentley.env.example /etc/bentley/bentley.env
 sudo nano /etc/bentley/bentley.env
 
-sudo cp /opt/bentley/app/ops/bentley.service.example /etc/systemd/system/bentley.service
+sudo cp /opt/bentley/ops/bentley.service.example /etc/systemd/system/bentley.service
 sudo systemctl daemon-reload
 sudo systemctl enable bentley
 
-cd /opt/bentley/app
+cd /opt/bentley
 chmod +x ops/deploy.sh
-APP_DIR=/opt/bentley/app BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
+APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
 ```
 
 After that, each deploy is one command:
 
 ```bash
-cd /opt/bentley/app
-APP_DIR=/opt/bentley/app BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
+cd /opt/bentley
+APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
 ```
 
 #### Sync notifier/sniper YAML + suspicious terms via rsync and reload
@@ -437,45 +437,10 @@ sudo install -o root -g bentley -m 640 /tmp/suspicious_terms.txt /etc/bentley/su
 4. Reload definitions on the running release (no full restart required):
 
 ```bash
-/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Notifiers.reload()"
-/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Snipers.reload()"
-/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Notifiers.reload()"
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Snipers.reload()"
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
 ```
-
-If the app is deployed as a release, build it with:
-
-```bash
-MIX_ENV=prod mix release
-```
-
-Start the release:
-
-```bash
-_build/prod/rel/bentley/bin/bentley start
-```
-
-Reload the suspicious terms cache without opening a shell:
-
-```bash
-_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
-```
-
-Attach a remote shell for inspection:
-
-```bash
-_build/prod/rel/bentley/bin/bentley remote
-```
-
-Then query the database through the live node:
-
-```elixir
-token = Bentley.Repo.get_by(Bentley.Schema.Token, token_address: "PASTE_TOKEN_ADDRESS")
-Map.take(token, [:token_address, :name, :active, :inactivity_reason])
-```
-
-For a release deployment, the operational flow is the same as in development:
-edit the suspicious terms file on disk, run the reload command, then inspect the
-token through `Bentley.Repo` to confirm the token became inactive.
 
 ### Docker
 
@@ -484,7 +449,7 @@ If the release runs in a Docker container, use `docker exec` to reach the node:
 Start the container (usually via docker-compose or docker run):
 
 ```bash
-docker run -d --name bentley_app -e SUSPICIOUS_TERMS_FILE_PATH=/app/suspicious_terms.txt bentley_image
+docker run -d --name bentley_app -e SUSPICIOUS_TERMS_FILE_PATH=/suspicious_terms.txt bentley_image
 ```
 
 Reload the suspicious terms cache without opening a shell:

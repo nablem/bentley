@@ -4,7 +4,7 @@ set -euo pipefail
 # --- Config ---
 APP_NAME="bentley"
 # This is where your live binary will live
-DEPLOY_DIR="/opt/bentley/app"
+DEPLOY_DIR="/opt/bentley"
 ENV_FILE="/etc/bentley/bentley.env"
 
 echo "==> Pulling latest code"
