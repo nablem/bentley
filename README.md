@@ -453,6 +453,19 @@ Quick node health checks:
 /opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "IO.inspect(node())"
 ```
 
+Quick runtime config checks from server shell:
+
+```bash
+# List loaded notifier IDs
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "defs = Bentley.Notifiers.loaded_definitions(); IO.inspect(Enum.map(defs, & &1.id), label: \"notifiers\")"
+
+# List loaded sniper IDs
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "defs = Bentley.Snipers.loaded_definitions(); IO.inspect(Enum.map(defs, & &1.id), label: \"snipers\")"
+
+# Show suspicious terms count currently cached in ETS
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "patterns = case :ets.lookup(:bentley_suspicious_terms_cache, :patterns) do [{:patterns, v}] -> v; _ -> [] end; IO.inspect(length(patterns), label: \"suspicious_terms_count\")"
+```
+
 ### Sync notifier/sniper YAML + suspicious terms via rsync and reload
 
 If you keep `notifiers.yaml`, `snipers.yaml`, and `suspicious_terms.txt` in the
