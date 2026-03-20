@@ -4,6 +4,7 @@ defmodule Bentley.UpdaterTest do
   import ExUnit.CaptureLog
 
   alias Bentley.Repo
+  alias Bentley.Schema.SniperPosition
   alias Bentley.Schema.Token
   alias Bentley.Updater
 
@@ -489,6 +490,113 @@ defmodule Bentley.UpdaterTest do
 
     assert "exact_cutoff_due" in token_addresses
     refute "after_cutoff_not_due" in token_addresses
+  end
+
+  test "update_token_from_details continues updating token with open position despite possible inactivity" do
+    token_address = "position_protected_token"
+
+    # Create a token that would normally be marked inactive due to low market cap
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      active: true,
+      inactivity_reason: nil,
+      market_cap: 1_500.0,  # Below 2500 threshold
+      name: "Protected",
+      ticker: "PRO",
+      last_checked_at: nil  # First update
+    })
+    |> Repo.insert!()
+
+    # Create an open sniper position on this token
+    %SniperPosition{}
+    |> SniperPosition.changeset(%{
+      sniper_id: "test_sniper",
+      notifier_id: "test_notifier",
+      token_address: token_address,
+      wallet_id: "test_wallet",
+      entry_market_cap: 5_000.0,
+      position_size_usd: 100.0,
+      initial_units: 1_000.0,
+      remaining_units: 1_000.0,
+      status: "open",
+      opened_at: NaiveDateTime.utc_now()
+    })
+    |> Repo.insert!()
+
+    # Update the token with new details
+    details = %{
+      "baseToken" => %{"name" => "Protected Updated", "symbol" => "PRU"},
+      "marketCap" => 1_200.0,  # Still below threshold
+      "volume" => %{"h1" => 500.0}
+    }
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    # Verify token is still active (not marked inactive due to low market cap)
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == true
+    assert token.inactivity_reason == nil
+    # Verify metrics were updated
+    assert token.market_cap == 1_200.0
+    assert token.name == "Protected Updated"
+    assert token.ticker == "PRU"
+    assert token.volume_1h == 500.0
+    assert token.last_checked_at != nil
+  end
+
+  test "update_token_from_details marks token inactive if all positions are closed" do
+    token_address = "no_open_positions_token"
+
+    # Create a token that would normally be marked inactive due to low market cap
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      active: true,
+      inactivity_reason: nil,
+      market_cap: 1_500.0,  # Below 2500 threshold
+      name: "Unprotected",
+      ticker: "UNP",
+      last_checked_at: nil  # First update
+    })
+    |> Repo.insert!()
+
+    # Create a CLOSED sniper position on this token (no open positions)
+    %SniperPosition{}
+    |> SniperPosition.changeset(%{
+      sniper_id: "test_sniper",
+      notifier_id: "test_notifier",
+      token_address: token_address,
+      wallet_id: "test_wallet",
+      entry_market_cap: 5_000.0,
+      position_size_usd: 100.0,
+      initial_units: 1_000.0,
+      remaining_units: 0.0,
+      status: "closed",
+      opened_at: NaiveDateTime.utc_now(),
+      closed_at: NaiveDateTime.utc_now()
+    })
+    |> Repo.insert!()
+
+    # Update the token with new details
+    details = %{
+      "baseToken" => %{"name" => "Unprotected Updated", "symbol" => "UNU"},
+      "marketCap" => 1_200.0,  # Below threshold
+      "volume" => %{"h1" => 500.0}
+    }
+
+    assert {:ok, _} = Updater.update_token_from_details(token_address, details)
+
+    # Verify token is marked INACTIVE because no OPEN positions exist
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == false
+    assert token.inactivity_reason == "market_cap_below_2_5k"
+    # Verify metrics were still updated before inactivation
+    assert token.market_cap == 1_200.0
+    assert token.name == "Unprotected Updated"
+    assert token.ticker == "UNU"
+    assert token.volume_1h == 500.0
+    assert token.last_checked_at != nil
   end
 
   defp cutoff_for(now, interval_ms), do: Updater.cutoff_for(now, interval_ms)

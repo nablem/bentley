@@ -10,6 +10,7 @@ defmodule Bentley.Updater do
   alias Bentley.Activator
   alias Bentley.RateLimiter
   alias Bentley.Repo
+  alias Bentley.Schema.SniperPosition
   alias Bentley.Schema.Token
 
   @details_api_base_url "https://api.dexscreener.com/tokens/v1/solana"
@@ -127,7 +128,13 @@ defmodule Bentley.Updater do
           |> attrs_for_activity(attrs)
           |> Activator.define_activity()
 
-        attrs = Map.merge(attrs, activity_attrs)
+        # Only apply activity logic if no open positions exist
+        attrs =
+          if has_open_position?(token_address) do
+            attrs
+          else
+            Map.merge(attrs, activity_attrs)
+          end
 
         token
         |> Token.changeset(attrs)
@@ -292,5 +299,11 @@ defmodule Bentley.Updater do
 
   defp schedule_update(interval) do
     Process.send_after(self(), :update, interval)
+  end
+
+  defp has_open_position?(token_address) do
+    SniperPosition
+    |> where([p], p.token_address == ^token_address and p.status == "open")
+    |> Repo.exists?()
   end
 end
