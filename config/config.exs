@@ -21,6 +21,6 @@ config :bentley,
 
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_dev.db",
-  pool_size: 5
+  pool_size: 1
 
 import_config "#{config_env()}.exs"
