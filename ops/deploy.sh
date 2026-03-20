@@ -46,7 +46,7 @@ bootstrap_os_resources() {
 
 	run_root mkdir -p "$APP_DIR" "$(dirname "$ENV_FILE")"
 	run_root chown "$SERVICE_USER:$SERVICE_GROUP" "$APP_DIR"
-	run_root chown root:root "$(dirname "$ENV_FILE")"
+	run_root chown "root:$SERVICE_GROUP" "$(dirname "$ENV_FILE")"
 	run_root chmod 750 "$(dirname "$ENV_FILE")"
 }
 
@@ -95,15 +95,15 @@ ensure_runtime_file() {
 		return
 	fi
 
-	if [ -f "$file_path" ]; then
-		return
+	if [ ! -f "$file_path" ]; then
+		echo "==> Creating missing $label file: $file_path"
+		run_root touch "$file_path"
 	fi
 
-	echo "==> Creating missing $label file: $file_path"
 	run_root mkdir -p "$(dirname "$file_path")"
-	run_root touch "$file_path"
 
-	run_root chown "$SERVICE_USER:$SERVICE_GROUP" "$(dirname "$file_path")" "$file_path"
+	run_root chown "root:$SERVICE_GROUP" "$(dirname "$file_path")"
+	run_root chown "root:$SERVICE_GROUP" "$file_path"
 	run_root chmod 750 "$(dirname "$file_path")"
 	run_root chmod 640 "$file_path"
 }
