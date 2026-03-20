@@ -12,6 +12,10 @@ The application expects these environment variables outside test:
 - `SNIPERS_FILE_PATH`: optional path to the YAML sniper definitions.
 - `TELEGRAM_BOT_TOKEN`: required when `NOTIFIERS_FILE_PATH` is set.
 
+In development, `.env` is loaded automatically. In production releases,
+environment variables must be set by the host process manager or shell before
+starting `bin/bentley`.
+
 For Solana sniper executor integrations (buy/sell + wallet capital checks), use:
 
 - `JUPITER_API_KEY`: Jupiter API key used for quote/swap requests.
@@ -310,6 +314,58 @@ This is useful for testing the retroactive suspicious-term flow:
 6. Query the token again and verify it became `active: false` with `inactivity_reason: "suspicious_name"`.
 
 ### Production release
+
+#### Loading production environment variables
+
+Use a dedicated production env file (for example, `/etc/bentley/bentley.env`) and
+load it before starting the release.
+
+Example file:
+
+```bash
+SUSPICIOUS_TERMS_FILE_PATH=/opt/bentley/current/suspicious_terms.txt
+NOTIFIERS_FILE_PATH=/opt/bentley/current/notifiers.yaml
+SNIPERS_FILE_PATH=/opt/bentley/current/snipers.yaml
+TELEGRAM_BOT_TOKEN=123456:replace_me
+JUPITER_API_KEY=replace_me
+SOLANA_WALLET_main=replace_me
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+```
+
+Recommended permissions:
+
+```bash
+sudo chown root:root /etc/bentley/bentley.env
+sudo chmod 600 /etc/bentley/bentley.env
+```
+
+If using `systemd`, add this to the service:
+
+```ini
+[Service]
+EnvironmentFile=/etc/bentley/bentley.env
+WorkingDirectory=/opt/bentley/current
+ExecStart=/opt/bentley/current/bin/bentley start
+ExecStop=/opt/bentley/current/bin/bentley stop
+Restart=always
+```
+
+Apply service changes:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart bentley
+sudo systemctl status bentley
+```
+
+If starting manually from a shell:
+
+```bash
+set -a
+source /etc/bentley/bentley.env
+set +a
+./bin/bentley start
+```
 
 If the app is deployed as a release, build it with:
 
