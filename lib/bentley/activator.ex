@@ -9,6 +9,7 @@ defmodule Bentley.Activator do
   require Logger
 
   @min_market_cap_threshold 2_500.0
+  @age_limit_hours 840
 
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
@@ -38,7 +39,7 @@ defmodule Bentley.Activator do
       tiktok_creator_profile?(Map.get(attrs, :tiktok_url)) -> "tiktok_creator_profile"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
-      age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_840h"
+      age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
       livestream_related?(attrs) -> "livestream_related"
       first_update? and name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
       first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
@@ -108,7 +109,7 @@ defmodule Bentley.Activator do
   defp livestream_domain?(_), do: false
 
   defp age_above_limit?(created_on_chain_at) when is_struct(created_on_chain_at, NaiveDateTime) do
-    NaiveDateTime.diff(current_time(), created_on_chain_at, :second) > 840 * 3_600
+    NaiveDateTime.diff(current_time(), created_on_chain_at, :second) > @age_limit_hours * 3_600
   end
 
   defp age_above_limit?(_), do: false
