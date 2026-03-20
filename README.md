@@ -284,7 +284,46 @@ The recommended deployment approach uses `ops/deploy.sh`, which is an idempotent
 script that handles first-time server bootstrap and all subsequent deploys. The
 templates in `ops/` provide the env file and systemd unit.
 
-### Step 1 — Configure the server env file
+### Step 1 — Deploy
+
+`ops/deploy.sh` is the single entry point for both first-time setup and ongoing
+deploys. It is idempotent — safe to re-run.
+
+On first run it will:
+1. Create the `bentley` service user if missing.
+2. Create `/etc/bentley/bentley.env` from the template and exit, prompting you to fill in secrets.
+3. Install the systemd unit from `ops/bentley.service.example` if missing and enable it.
+4. Create the `DATABASE_PATH` parent directory with correct ownership.
+5. Create empty files for any configured `SUSPICIOUS_TERMS_FILE_PATH`, `NOTIFIERS_FILE_PATH`, `SNIPERS_FILE_PATH` that are missing.
+6. Pull latest code, build the release, run migrations, restart the service.
+
+First-time setup:
+
+```bash
+# Clone repository.
+sudo mkdir -p /opt/bentley
+sudo chown "$USER":"$USER" /opt/bentley
+git clone <REPO_URL> /opt/bentley
+
+# Run deploy — will create env file from template and stop on first run.
+cd /opt/bentley
+chmod +x ops/deploy.sh
+./ops/deploy.sh
+
+# Edit env file with real values.
+sudo nano /etc/bentley/bentley.env
+
+# Run again — this time it builds, migrates, and starts the service.
+./ops/deploy.sh
+```
+
+Every subsequent deploy is the same single command:
+
+```bash
+cd /opt/bentley && ./ops/deploy.sh
+```
+
+### Step 2 — Configure the server env file
 
 All runtime configuration lives in `/etc/bentley/bentley.env`. The deploy script
 creates this file from `ops/bentley.env.example` on first run, then stops so you
@@ -324,45 +363,6 @@ manually if needed:
 sudo mkdir -p /var/lib/bentley
 sudo chown bentley:bentley /var/lib/bentley
 sudo chmod 750 /var/lib/bentley
-```
-
-### Step 2 — Deploy
-
-`ops/deploy.sh` is the single entry point for both first-time setup and ongoing
-deploys. It is idempotent — safe to re-run.
-
-On first run it will:
-1. Create the `bentley` service user if missing.
-2. Create `/etc/bentley/bentley.env` from the template and exit, prompting you to fill in secrets.
-3. Install the systemd unit from `ops/bentley.service.example` if missing and enable it.
-4. Create the `DATABASE_PATH` parent directory with correct ownership.
-5. Create empty files for any configured `SUSPICIOUS_TERMS_FILE_PATH`, `NOTIFIERS_FILE_PATH`, `SNIPERS_FILE_PATH` that are missing.
-6. Pull latest code, build the release, run migrations, restart the service.
-
-First-time setup:
-
-```bash
-# Clone repository.
-sudo mkdir -p /opt/bentley
-sudo chown "$USER":"$USER" /opt/bentley
-git clone <REPO_URL> /opt/bentley
-
-# Run deploy — will create env file from template and stop on first run.
-cd /opt/bentley
-chmod +x ops/deploy.sh
-./ops/deploy.sh
-
-# Edit env file with real values.
-sudo nano /etc/bentley/bentley.env
-
-# Run again — this time it builds, migrates, and starts the service.
-./ops/deploy.sh
-```
-
-Every subsequent deploy is the same single command:
-
-```bash
-cd /opt/bentley && ./ops/deploy.sh
 ```
 
 ### deploy.sh variables (all optional)
@@ -409,16 +409,20 @@ SNIPERS_FILE_PATH=/etc/bentley/snipers.yaml
 SUSPICIOUS_TERMS_FILE_PATH=/etc/bentley/suspicious_terms.txt
 ```
 
-Then from your local machine, run:
+Then from your local machine, run one of these:
 
 ```bash
 chmod +x ops/sync-config.sh
 ./ops/sync-config.sh user@your-server
 ```
 
-`ops/sync-config.sh` rsyncs the three files to the server and installs them with
-correct permissions (`root:bentley 640`), then triggers a live reload on the
-running release — no restart required.
+```powershell
+.\ops\sync-config.ps1 user@your-server
+```
+
+Both scripts sync the three files to the server and install them with correct
+permissions (`root:bentley 640`), then trigger a live reload on the running
+release - no restart required.
 
 Optional overrides:
 
