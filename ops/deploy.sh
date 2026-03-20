@@ -13,6 +13,7 @@ ENV_FILE="${ENV_FILE:-/etc/bentley/bentley.env}"
 SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/${SERVICE_NAME}.service}"
 SERVICE_TEMPLATE="${SERVICE_TEMPLATE:-$APP_DIR/ops/bentley.service.example}"
 ENV_TEMPLATE="${ENV_TEMPLATE:-$APP_DIR/ops/bentley.env.example}"
+AUTO_STASH_DIRTY_REPO="${AUTO_STASH_DIRTY_REPO:-1}"
 
 run_root() {
 	if [ "$(id -u)" -eq 0 ]; then
@@ -87,25 +88,86 @@ bootstrap_service_file() {
 	run_root systemctl enable "$SERVICE_NAME"
 }
 
+ensure_service_file_command() {
+	if [ ! -f "$SERVICE_FILE" ]; then
+		return
+	fi
+
+	if run_root grep -q "bin/bentley foreground" "$SERVICE_FILE"; then
+		echo "==> Updating service unit command: foreground -> start"
+		run_root sed -i 's/bin\/bentley foreground/bin\/bentley start/' "$SERVICE_FILE"
+		run_root systemctl daemon-reload
+	fi
+}
+
 ensure_runtime_file() {
 	file_path="$1"
 	label="$2"
+	created="0"
 
 	if [ -z "$file_path" ]; then
 		return
 	fi
 
+	run_root mkdir -p "$(dirname "$file_path")"
+
 	if [ ! -f "$file_path" ]; then
 		echo "==> Creating missing $label file: $file_path"
-		run_root touch "$file_path"
+		created="1"
+		case "$label" in
+			notifiers)
+				run_root sh -c "printf 'notifiers: []\n' > '$file_path'"
+				;;
+			snipers)
+				run_root sh -c "printf 'snipers: []\n' > '$file_path'"
+				;;
+			*)
+				run_root touch "$file_path"
+				;;
+		esac
 	fi
 
-	run_root mkdir -p "$(dirname "$file_path")"
+	if [ "$created" = "0" ]; then
+		case "$label" in
+			notifiers)
+				if ! run_root grep -Eq '^notifiers:' "$file_path"; then
+					echo "==> Repairing invalid notifiers file: $file_path"
+					run_root sh -c "printf 'notifiers: []\n' > '$file_path'"
+				fi
+				;;
+			snipers)
+				if ! run_root grep -Eq '^snipers:' "$file_path"; then
+					echo "==> Repairing invalid snipers file: $file_path"
+					run_root sh -c "printf 'snipers: []\n' > '$file_path'"
+				fi
+				;;
+		esac
+	fi
 
 	run_root chown "root:$SERVICE_GROUP" "$(dirname "$file_path")"
 	run_root chown "root:$SERVICE_GROUP" "$file_path"
 	run_root chmod 750 "$(dirname "$file_path")"
 	run_root chmod 640 "$file_path"
+}
+
+update_source() {
+	echo "==> Updating source from origin/$BRANCH"
+	git config --global --add safe.directory "$APP_DIR"
+	git fetch origin "$BRANCH"
+	git checkout "$BRANCH"
+
+	if [ -n "$(git status --porcelain)" ]; then
+		if [ "$AUTO_STASH_DIRTY_REPO" = "1" ]; then
+			stash_name="deploy-auto-$(date +%s)"
+			echo "==> Local git changes detected; stashing automatically ($stash_name)"
+			git stash push --include-untracked -m "$stash_name" >/dev/null
+		else
+			echo "ERROR: local git changes detected. Commit/stash or set AUTO_STASH_DIRTY_REPO=1"
+			exit 1
+		fi
+	fi
+
+	git pull --ff-only origin "$BRANCH"
 }
 
 cd "$APP_DIR"
@@ -114,6 +176,7 @@ guard_env_file_target
 bootstrap_os_resources
 bootstrap_env_file
 bootstrap_service_file
+ensure_service_file_command
 
 echo "==> Loading runtime environment from $ENV_FILE"
 set -a
@@ -141,11 +204,7 @@ ensure_runtime_file "${SUSPICIOUS_TERMS_FILE_PATH:-}" "suspicious terms"
 ensure_runtime_file "${NOTIFIERS_FILE_PATH:-}" "notifiers"
 ensure_runtime_file "${SNIPERS_FILE_PATH:-}" "snipers"
 
-echo "==> Updating source from origin/$BRANCH"
-git config --global --add safe.directory "$APP_DIR"
-git fetch origin "$BRANCH"
-git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH"
+update_source
 
 echo "==> Building release"
 export MIX_ENV=prod
@@ -155,6 +214,18 @@ mix release --overwrite
 
 echo "==> Running database migrations"
 mix ecto.migrate
+
+echo "==> Fixing sqlite file ownership"
+run_root chown "$SERVICE_USER:$SERVICE_GROUP" "$DATABASE_PATH"
+run_root chmod 640 "$DATABASE_PATH"
+if [ -f "${DATABASE_PATH}-wal" ]; then
+	run_root chown "$SERVICE_USER:$SERVICE_GROUP" "${DATABASE_PATH}-wal"
+	run_root chmod 640 "${DATABASE_PATH}-wal"
+fi
+if [ -f "${DATABASE_PATH}-shm" ]; then
+	run_root chown "$SERVICE_USER:$SERVICE_GROUP" "${DATABASE_PATH}-shm"
+	run_root chmod 640 "${DATABASE_PATH}-shm"
+fi
 
 echo "==> Restarting service: $SERVICE_NAME"
 run_root systemctl restart "$SERVICE_NAME"
