@@ -290,6 +290,68 @@ defmodule Bentley.NotifiersTest do
              Worker.deliver_notifications(dependent_definition, now)
   end
 
+  test "dependent notifier with multiple dependencies sends only after all prerequisites sent the token" do
+    now = ~N[2026-03-17 12:00:00]
+
+    insert_token!(%{
+      token_address: "token-multi-dependent",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Multi Dependent",
+      ticker: "MDEP",
+      volume_1h: 5_000.0
+    })
+
+    first_prerequisite_definition = %Definition{
+      id: "source-a",
+      telegram_channel: "@source-a",
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    second_prerequisite_definition = %Definition{
+      id: "source-b",
+      telegram_channel: "@source-b",
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    dependent_definition = %Definition{
+      id: "target-multi",
+      telegram_channel: "@target-multi",
+      depends_on_notifier_ids: ["source-a", "source-b"],
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    Bentley.Telegram.ClientMock
+    |> deny(:send_message, 2)
+
+    assert {:ok, %{matched: 0, sent: 0, failed: 0}} =
+             Worker.deliver_notifications(dependent_definition, now)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@source-a", _message -> :ok end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(first_prerequisite_definition, now)
+
+    Bentley.Telegram.ClientMock
+    |> deny(:send_message, 2)
+
+    assert {:ok, %{matched: 0, sent: 0, failed: 0}} =
+             Worker.deliver_notifications(dependent_definition, now)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@source-b", _message -> :ok end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(second_prerequisite_definition, now)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@target-multi", _message -> :ok end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(dependent_definition, now)
+  end
+
   test "different notifiers can notify the same token independently" do
     now = ~N[2026-03-17 12:00:00]
 
