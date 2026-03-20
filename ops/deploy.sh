@@ -41,7 +41,7 @@ bootstrap_os_resources() {
 	echo "==> Ensuring service user and directories"
 
 	if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
-		run_root useradd --system --create-home --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+		run_root useradd --system --no-create-home --home-dir "$APP_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
 	fi
 
 	run_root mkdir -p "$APP_DIR" "$(dirname "$ENV_FILE")"
@@ -65,10 +65,10 @@ bootstrap_env_file() {
 	run_root chown root:root "$ENV_FILE"
 	run_root chmod 600 "$ENV_FILE"
 
-	echo "ERROR: Created $ENV_FILE from template."
-	echo "Edit secrets and paths, then re-run deploy:"
-	echo "  sudo nano $ENV_FILE"
-	exit 1
+	echo "==> Created $ENV_FILE from template."
+	echo "    Fill in secrets and paths, then re-run deploy:"
+	echo "    nano $ENV_FILE"
+	exit 0
 }
 
 bootstrap_service_file() {
