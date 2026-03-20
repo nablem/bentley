@@ -10,11 +10,21 @@ The application expects these environment variables outside test:
 - `SUSPICIOUS_TERMS_FILE_PATH`: optional path to the suspicious terms text file.
 - `NOTIFIERS_FILE_PATH`: optional path to the YAML notifier definitions.
 - `SNIPERS_FILE_PATH`: optional path to the YAML sniper definitions.
+- `DATABASE_PATH`: optional sqlite database path override for runtime/release.
 - `TELEGRAM_BOT_TOKEN`: required when `NOTIFIERS_FILE_PATH` is set.
 
 In development, `.env` is loaded automatically. In production releases,
 environment variables must be set by the host process manager or shell before
-starting `bin/bentley`.
+starting `_build/prod/rel/bentley/bin/bentley`.
+
+For local development, start from the committed template:
+
+```bash
+cp dev.example.env .env
+```
+
+`dev.example.env` is for local development only. Server deploys use
+`ops/bentley.env.example` to create `/etc/bentley/bentley.env`.
 
 For Solana sniper executor integrations (buy/sell + wallet capital checks), use:
 
@@ -323,13 +333,23 @@ load it before starting the release.
 Example file:
 
 ```bash
-SUSPICIOUS_TERMS_FILE_PATH=/opt/bentley/current/suspicious_terms.txt
-NOTIFIERS_FILE_PATH=/opt/bentley/current/notifiers.yaml
-SNIPERS_FILE_PATH=/opt/bentley/current/snipers.yaml
+SUSPICIOUS_TERMS_FILE_PATH=/opt/bentley/suspicious_terms.txt
+NOTIFIERS_FILE_PATH=/opt/bentley/notifiers.yaml
+SNIPERS_FILE_PATH=/opt/bentley/snipers.yaml
+DATABASE_PATH=/var/lib/bentley/bentley.db
 TELEGRAM_BOT_TOKEN=123456:replace_me
 JUPITER_API_KEY=replace_me
 SOLANA_WALLET_main=replace_me
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+```
+
+When `DATABASE_PATH` points to `/var/lib/bentley/bentley.db`, create and
+permission the database directory before first deploy:
+
+```bash
+sudo mkdir -p /var/lib/bentley
+sudo chown bentley:bentley /var/lib/bentley
+sudo chmod 750 /var/lib/bentley
 ```
 
 Recommended permissions:
@@ -344,9 +364,8 @@ If using `systemd`, add this to the service:
 ```ini
 [Service]
 EnvironmentFile=/etc/bentley/bentley.env
-WorkingDirectory=/opt/bentley/current
-ExecStart=/opt/bentley/current/bin/bentley start
-ExecStop=/opt/bentley/current/bin/bentley stop
+WorkingDirectory=/opt/bentley/_build/prod/rel/bentley
+ExecStart=/opt/bentley/_build/prod/rel/bentley/bin/bentley foreground
 Restart=always
 ```
 
@@ -364,7 +383,7 @@ If starting manually from a shell:
 set -a
 source /etc/bentley/bentley.env
 set +a
-./bin/bentley start
+./_build/prod/rel/bentley/bin/bentley foreground
 ```
 
 #### Quick server setup with templates
@@ -375,20 +394,27 @@ This repository includes deployment templates you can copy to the server:
 - [ops/bentley.service.example](ops/bentley.service.example)
 - [ops/deploy.sh](ops/deploy.sh)
 
+Use [dev.example.env](dev.example.env) only for local `.env`. Do not point
+`ENV_FILE` in deploy to `dev.example.env` or `.env`.
+
 Recommended first-time setup on the server:
 
 ```bash
-sudo mkdir -p /etc/bentley
-sudo cp /opt/bentley/ops/bentley.env.example /etc/bentley/bentley.env
-sudo nano /etc/bentley/bentley.env
+# 1) Clone repository once.
+sudo mkdir -p /opt/bentley
+sudo chown "$USER":"$USER" /opt/bentley
+git clone <REPO_URL> /opt/bentley
 
-sudo cp /opt/bentley/ops/bentley.service.example /etc/systemd/system/bentley.service
-sudo systemctl daemon-reload
-sudo systemctl enable bentley
-
+# 2) Run deploy script once to bootstrap server resources.
 cd /opt/bentley
 chmod +x ops/deploy.sh
-APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
+APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ENV_FILE=/etc/bentley/bentley.env ./ops/deploy.sh
+
+# 3) Script will create /etc/bentley/bentley.env from template and exit on first run.
+sudo nano /etc/bentley/bentley.env
+
+# 4) Run again to build + migrate + start service.
+APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ENV_FILE=/etc/bentley/bentley.env ./ops/deploy.sh
 ```
 
 After that, each deploy is one command:
@@ -397,6 +423,36 @@ After that, each deploy is one command:
 cd /opt/bentley
 APP_DIR=/opt/bentley BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
 ```
+
+`ops/deploy.sh` accepts optional environment variables. If you omit them,
+these defaults are used:
+
+```bash
+APP_DIR=/opt/bentley
+BRANCH=main
+SERVICE_NAME=bentley
+SERVICE_USER=bentley
+SERVICE_GROUP=bentley
+ENV_FILE=/etc/bentley/bentley.env
+SERVICE_FILE=/etc/systemd/system/bentley.service
+SERVICE_TEMPLATE=/opt/bentley/ops/bentley.service.example
+ENV_TEMPLATE=/opt/bentley/ops/bentley.env.example
+```
+
+So the shortest form is:
+
+```bash
+cd /opt/bentley
+./ops/deploy.sh
+```
+
+When these variables are set, deploy also auto-creates missing runtime files:
+
+- `SUSPICIOUS_TERMS_FILE_PATH`
+- `NOTIFIERS_FILE_PATH`
+- `SNIPERS_FILE_PATH`
+
+Missing files are created as empty files at the configured paths.
 
 #### Sync notifier/sniper YAML + suspicious terms via rsync and reload
 

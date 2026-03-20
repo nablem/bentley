@@ -8,6 +8,7 @@ suspicious_terms_file_path = System.get_env("SUSPICIOUS_TERMS_FILE_PATH")
 notifiers_file_path = System.get_env("NOTIFIERS_FILE_PATH")
 snipers_file_path = System.get_env("SNIPERS_FILE_PATH")
 telegram_bot_token = System.get_env("TELEGRAM_BOT_TOKEN")
+database_path = System.get_env("DATABASE_PATH")
 
 blank_to_nil = fn
   value when is_binary(value) ->
@@ -24,6 +25,7 @@ suspicious_terms_file_path = blank_to_nil.(suspicious_terms_file_path)
 notifiers_file_path = blank_to_nil.(notifiers_file_path)
 snipers_file_path = blank_to_nil.(snipers_file_path)
 telegram_bot_token = blank_to_nil.(telegram_bot_token)
+database_path = blank_to_nil.(database_path)
 
 if is_binary(suspicious_terms_file_path) and config_env() != :test and
      not File.exists?(suspicious_terms_file_path) do
@@ -71,6 +73,11 @@ if is_binary(notifiers_file_path) and config_env() != :test and
 
   In production, set it as an environment variable.
   """
+end
+
+if is_binary(database_path) do
+  config :bentley, Bentley.Repo,
+    database: database_path
 end
 
 config :bentley,
