@@ -405,6 +405,54 @@ cd /opt/bentley
 _build/prod/rel/bentley/bin/bentley start
 ```
 
+### Service logs and remote IEx
+
+Check current service status:
+
+```bash
+sudo systemctl status bentley --no-pager
+```
+
+Follow live logs from systemd journal:
+
+```bash
+sudo journalctl -u bentley -f
+```
+
+Show recent logs:
+
+```bash
+sudo journalctl -u bentley -n 200 --no-pager
+```
+
+Open a remote IEx shell on the running release:
+
+```bash
+/opt/bentley/_build/prod/rel/bentley/bin/bentley remote
+```
+
+Inside remote IEx, list currently active tokens (latest 20):
+
+```elixir
+import Ecto.Query
+
+Bentley.Repo.all(
+  from(t in Bentley.Schema.Token,
+    where: t.active == true,
+    order_by: [desc: t.updated_at],
+    limit: 20,
+    select: %{token_address: t.token_address, name: t.name, updated_at: t.updated_at}
+  )
+)
+```
+
+Quick node health checks:
+
+```bash
+/opt/bentley/_build/prod/rel/bentley/bin/bentley pid
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "IO.inspect(node())"
+```
+
 ### Sync notifier/sniper YAML + suspicious terms via rsync and reload
 
 If you keep `notifiers.yaml`, `snipers.yaml`, and `suspicious_terms.txt` in the
