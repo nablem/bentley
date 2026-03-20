@@ -323,6 +323,17 @@ Every subsequent deploy is the same single command:
 cd /opt/bentley && ./ops/deploy.sh
 ```
 
+Recommended (explicit update + deploy):
+
+```bash
+cd /opt/bentley
+git pull --ff-only origin main
+./ops/deploy.sh
+```
+
+`ops/deploy.sh` already updates from origin internally. The explicit `git pull`
+step is optional, but useful when you want to review update output before build.
+
 ### Step 2 — Configure the server env file
 
 All runtime configuration lives in `/etc/bentley/bentley.env`. The deploy script

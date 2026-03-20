@@ -15,6 +15,39 @@ SERVICE_TEMPLATE="${SERVICE_TEMPLATE:-$APP_DIR/ops/bentley.service.example}"
 ENV_TEMPLATE="${ENV_TEMPLATE:-$APP_DIR/ops/bentley.env.example}"
 AUTO_STASH_DIRTY_REPO="${AUTO_STASH_DIRTY_REPO:-1}"
 
+require_command() {
+	cmd="$1"
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		echo "ERROR: required command not found: $cmd"
+		exit 1
+	fi
+}
+
+check_elixir_version() {
+	version_line="$(elixir --version | head -n1)"
+	version="$(echo "$version_line" | awk '{print $2}')"
+	major="$(echo "$version" | cut -d. -f1)"
+	minor="$(echo "$version" | cut -d. -f2)"
+
+	if [ -z "$major" ] || [ -z "$minor" ]; then
+		echo "ERROR: unable to parse Elixir version from: $version_line"
+		exit 1
+	fi
+
+	if [ "$major" -lt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -lt 19 ]; }; then
+		echo "ERROR: Elixir ~> 1.19 is required, found: $version"
+		exit 1
+	fi
+}
+
+preflight_checks() {
+	echo "==> Running preflight checks"
+	require_command git
+	require_command mix
+	require_command elixir
+	check_elixir_version
+}
+
 run_root() {
 	if [ "$(id -u)" -eq 0 ]; then
 		"$@"
@@ -172,6 +205,7 @@ update_source() {
 
 cd "$APP_DIR"
 
+preflight_checks
 guard_env_file_target
 bootstrap_os_resources
 bootstrap_env_file
