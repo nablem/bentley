@@ -13,7 +13,6 @@ notifiers:
       market_cap:
         min: 10000
         max: 500000
-
   - id: follow-up
     enabled: true
     telegram_channel: "@my_channel"
