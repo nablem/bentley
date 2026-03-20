@@ -466,7 +466,7 @@ Quick runtime config checks from server shell:
 /opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "patterns = case :ets.lookup(:bentley_suspicious_terms_cache, :patterns) do [{:patterns, v}] -> v; _ -> [] end; IO.inspect(length(patterns), label: \"suspicious_terms_count\")"
 ```
 
-### Sync notifier/sniper YAML + suspicious terms via rsync and reload
+### Sync notifier/sniper YAML + suspicious terms and reload
 
 If you keep `notifiers.yaml`, `snipers.yaml`, and `suspicious_terms.txt` in the
 project root locally, you can push only those files to the server and reload
