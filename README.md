@@ -367,6 +367,81 @@ set +a
 ./bin/bentley start
 ```
 
+#### Quick server setup with templates
+
+This repository includes deployment templates you can copy to the server:
+
+- [ops/bentley.env.example](ops/bentley.env.example)
+- [ops/bentley.service.example](ops/bentley.service.example)
+- [ops/deploy.sh](ops/deploy.sh)
+
+Recommended first-time setup on the server:
+
+```bash
+sudo mkdir -p /etc/bentley
+sudo cp /opt/bentley/app/ops/bentley.env.example /etc/bentley/bentley.env
+sudo nano /etc/bentley/bentley.env
+
+sudo cp /opt/bentley/app/ops/bentley.service.example /etc/systemd/system/bentley.service
+sudo systemctl daemon-reload
+sudo systemctl enable bentley
+
+cd /opt/bentley/app
+chmod +x ops/deploy.sh
+APP_DIR=/opt/bentley/app BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
+```
+
+After that, each deploy is one command:
+
+```bash
+cd /opt/bentley/app
+APP_DIR=/opt/bentley/app BRANCH=main SERVICE_NAME=bentley ./ops/deploy.sh
+```
+
+#### Sync notifier/sniper YAML + suspicious terms via rsync and reload
+
+If you keep `notifiers.yaml`, `snipers.yaml`, and `suspicious_terms.txt` in the
+project root locally, you can push only those files to the server and reload
+them without rebuilding the release.
+
+1. Ensure runtime paths in `/etc/bentley/bentley.env` point to the synced files,
+   for example:
+
+```bash
+NOTIFIERS_FILE_PATH=/etc/bentley/notifiers.yaml
+SNIPERS_FILE_PATH=/etc/bentley/snipers.yaml
+SUSPICIOUS_TERMS_FILE_PATH=/etc/bentley/suspicious_terms.txt
+```
+
+2. From local machine, sync files to server:
+
+```bash
+rsync -avz ./notifiers.yaml ./snipers.yaml ./suspicious_terms.txt user@your-server:/tmp/
+```
+
+3. On server, install files into place with consistent owner/mode:
+
+```bash
+sudo mkdir -p /etc/bentley
+sudo chown root:bentley /etc/bentley
+sudo chmod 750 /etc/bentley
+
+sudo install -o root -g bentley -m 640 /tmp/notifiers.yaml /etc/bentley/notifiers.yaml
+sudo install -o root -g bentley -m 640 /tmp/snipers.yaml /etc/bentley/snipers.yaml
+sudo install -o root -g bentley -m 640 /tmp/suspicious_terms.txt /etc/bentley/suspicious_terms.txt
+```
+
+`root:bentley` + `640` keeps files non-world-readable while still allowing the
+`bentley` service user to read them.
+
+4. Reload definitions on the running release (no full restart required):
+
+```bash
+/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Notifiers.reload()"
+/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.Snipers.reload()"
+/opt/bentley/app/_build/prod/rel/bentley/bin/bentley rpc "Bentley.SuspiciousTermsCache.reload()"
+```
+
 If the app is deployed as a release, build it with:
 
 ```bash

@@ -1,0 +1,19 @@
+[Unit]
+Description=Bentley Elixir Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bentley
+Group=bentley
+WorkingDirectory=/opt/bentley/app
+EnvironmentFile=/etc/bentley/bentley.env
+ExecStart=/opt/bentley/app/_build/prod/rel/bentley/bin/bentley foreground
+KillSignal=SIGTERM
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
