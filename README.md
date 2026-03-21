@@ -284,7 +284,7 @@ The recommended deployment approach uses `ops/deploy.sh`, which is an idempotent
 script that handles first-time server bootstrap and all subsequent deploys. The
 templates in `ops/` provide the env file and systemd unit.
 
-### Step 1 — Deploy
+### Deploy
 
 `ops/deploy.sh` is the single entry point for both first-time setup and ongoing
 deploys. It is idempotent — safe to re-run.
@@ -307,7 +307,6 @@ git clone <REPO_URL> /opt/bentley
 
 # Run deploy — will create env file from template and stop on first run.
 cd /opt/bentley
-chmod +x ops/deploy.sh
 ./ops/deploy.sh
 
 # Edit env file with real values.
@@ -334,7 +333,7 @@ git pull --ff-only origin main
 `ops/deploy.sh` already updates from origin internally. The explicit `git pull`
 step is optional, but useful when you want to review update output before build.
 
-### Step 2 — Configure the server env file
+### Configure the server env file
 
 All runtime configuration lives in `/etc/bentley/bentley.env`. The deploy script
 creates this file from `ops/bentley.env.example` on first run, then stops so you
@@ -484,7 +483,6 @@ SUSPICIOUS_TERMS_FILE_PATH=/etc/bentley/suspicious_terms.txt
 Then from your local machine, run one of these:
 
 ```bash
-chmod +x ops/sync-config.sh
 ./ops/sync-config.sh user@your-server
 ```
 
