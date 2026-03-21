@@ -503,3 +503,25 @@ Optional overrides:
 | `SERVER_CONFIG_DIR` | `/etc/bentley` |
 | `APP_RELEASE_BIN` | `/opt/bentley/_build/prod/rel/bentley/bin/bentley` |
 | `SERVICE_GROUP` | `bentley` |
+
+## Notification troubleshooting
+
+### Inspect a token's current metrics
+
+If a token is not being picked up by a notifier, check its stored metrics by name:
+
+```bash
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "import Ecto.Query; t = Bentley.Repo.one(from t in Bentley.Schema.Token, where: t.name == \"TOKEN_NAME\", limit: 1); IO.inspect(t, label: \"token\")"
+```
+
+Replace `TOKEN_NAME` with the actual token name (case-sensitive). You can also match by `t.token_address` instead of `t.name`.
+
+### Find which suspicious patterns matched a token name
+
+If a token's `inactivity_reason` is `suspicious_name`, run this to see exactly which patterns triggered it:
+
+```bash
+/opt/bentley/_build/prod/rel/bentley/bin/bentley rpc "name = \"TOKEN_NAME\"; patterns = case :ets.lookup(:bentley_suspicious_terms_cache, :patterns) do [{:patterns, v}] -> v; _ -> [] end; matched = Enum.filter(patterns, &String.match?(name, &1)); IO.inspect(Enum.map(matched, &inspect/1), label: \"matched_patterns\")"
+```
+
+Replace `TOKEN_NAME` with the token name.
