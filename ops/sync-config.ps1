@@ -1,6 +1,4 @@
 #!/usr/bin/env pwsh
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
 
 param(
     [Parameter(Mandatory = $true)]
@@ -10,43 +8,29 @@ param(
     [string]$ServiceGroup = $(if ($env:SERVICE_GROUP) { $env:SERVICE_GROUP } else { "bentley" })
 )
 
-# Push local notifiers.yaml, snipers.yaml, and suspicious_terms.txt to the
-# server and trigger a live reload - no release rebuild or restart required.
-#
-# Usage:
-#   .\ops\sync-config.ps1 user@your-server
-#
-# Optional overrides:
-#   -ServerConfigDir /etc/bentley
-#   -AppReleaseBin /opt/bentley/_build/prod/rel/bentley/bin/bentley
-#   -ServiceGroup bentley
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
-if (-not (Get-Command scp -ErrorAction SilentlyContinue)) {
-    throw "scp command not found. Install OpenSSH Client on Windows first."
-}
-
-if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
-    throw "ssh command not found. Install OpenSSH Client on Windows first."
-}
-
-Write-Host "==> Syncing config files to $Server:/tmp/"
+Write-Host "==> Uploading config files"
 scp .\notifiers.yaml .\snipers.yaml .\suspicious_terms.txt "$Server`:/tmp/"
+if ($LASTEXITCODE -ne 0) {
+    throw "scp failed with exit code $LASTEXITCODE"
+}
 
-$remoteScript = @'
-CONFIG_DIR="$1"
-BIN="$2"
-GROUP="$3"
+$remote = @"
+set -euo pipefail;
+sudo install -o root -g '$ServiceGroup' -m 640 /tmp/notifiers.yaml '$ServerConfigDir/notifiers.yaml';
+sudo install -o root -g '$ServiceGroup' -m 640 /tmp/snipers.yaml '$ServerConfigDir/snipers.yaml';
+sudo install -o root -g '$ServiceGroup' -m 640 /tmp/suspicious_terms.txt '$ServerConfigDir/suspicious_terms.txt';
+'$AppReleaseBin' rpc Bentley.Notifiers.reload;
+'$AppReleaseBin' rpc Bentley.Snipers.reload;
+'$AppReleaseBin' rpc Bentley.SuspiciousTermsCache.reload
+"@
 
-sudo install -o root -g "$GROUP" -m 640 /tmp/notifiers.yaml        "$CONFIG_DIR/notifiers.yaml"
-sudo install -o root -g "$GROUP" -m 640 /tmp/snipers.yaml          "$CONFIG_DIR/snipers.yaml"
-sudo install -o root -g "$GROUP" -m 640 /tmp/suspicious_terms.txt  "$CONFIG_DIR/suspicious_terms.txt"
-
-"$BIN" rpc "Bentley.Notifiers.reload()"
-"$BIN" rpc "Bentley.Snipers.reload()"
-"$BIN" rpc "Bentley.SuspiciousTermsCache.reload()"
-'@
-
-Write-Host "==> Installing files and reloading on server"
-$remoteScript | ssh $Server "bash -s -- '$ServerConfigDir' '$AppReleaseBin' '$ServiceGroup'"
+Write-Host "==> Installing + reloading"
+ssh -T $Server ($remote -replace "`r", "")
+if ($LASTEXITCODE -ne 0) {
+    throw "remote install/reload failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "==> Done"
