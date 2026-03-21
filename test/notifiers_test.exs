@@ -246,6 +246,48 @@ defmodule Bentley.NotifiersTest do
     assert Repo.aggregate(NotificationDelivery, :count, :id) == 1
   end
 
+  test "deliver_notifications skips tokens not checked by updater yet" do
+    now = ~N[2026-03-17 12:00:00]
+
+    insert_token!(%{
+      token_address: "token-not-checked",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Not Checked",
+      ticker: "NOC",
+      volume_1h: 5_000.0,
+      last_checked_at: nil
+    })
+
+    insert_token!(%{
+      token_address: "token-checked",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Checked",
+      ticker: "CHK",
+      volume_1h: 5_000.0,
+      last_checked_at: ~N[2026-03-17 11:59:00]
+    })
+
+    definition = %Definition{
+      id: "checked-only",
+      telegram_channel: "@checked-only",
+      criteria: %{age_hours: %{min: 0, max: 24}}
+    }
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@checked-only", message ->
+      assert message =~ "Checked"
+      refute message =~ "Not Checked"
+      :ok
+    end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} = Worker.deliver_notifications(definition, now)
+
+    deliveries = Repo.all(NotificationDelivery)
+    assert Enum.map(deliveries, & &1.token_address) == ["token-checked"]
+  end
+
   test "dependent notifier sends only after prerequisite notifier sent the token" do
     now = ~N[2026-03-17 12:00:00]
 
@@ -441,6 +483,8 @@ defmodule Bentley.NotifiersTest do
   end
 
   defp insert_token!(attrs) do
+    attrs = Map.put_new(attrs, :last_checked_at, ~N[2026-03-17 11:59:00])
+
     %Token{}
     |> Token.changeset(attrs)
     |> Repo.insert!()

@@ -49,6 +49,8 @@ defmodule Bentley.Notifiers.Worker do
   def matching_tokens(%Definition{} = definition, now \\ current_time()) do
     Token
     |> where([t], t.active == true)
+    # Recorder can persist tokens before Updater enriches them; only notify checked tokens.
+    |> where([t], not is_nil(t.last_checked_at))
     |> join(:left, [t], d in NotificationDelivery,
       on: d.token_address == t.token_address and d.notifier_id == ^definition.id
     )
