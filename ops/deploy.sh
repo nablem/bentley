@@ -24,13 +24,12 @@ require_command() {
 }
 
 check_elixir_version() {
-	version_line="$(elixir --version | head -n1)"
-	version="$(echo "$version_line" | awk '{print $2}')"
+	version="$(elixir -e 'IO.puts(System.version())' 2>/dev/null)"
 	major="$(echo "$version" | cut -d. -f1)"
 	minor="$(echo "$version" | cut -d. -f2)"
 
 	if [ -z "$major" ] || [ -z "$minor" ]; then
-		echo "ERROR: unable to parse Elixir version from: $version_line"
+		echo "ERROR: unable to parse Elixir version from: $version"
 		exit 1
 	fi
 
