@@ -82,6 +82,15 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "tiktok_creator_profile"
   end
 
+  test "define_activity marks token as inactive when x_url points to an X post" do
+    attrs = %{token_address: "abc123", x_url: "https://x.com/alpha/status/123", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "x_post_url"
+  end
+
   test "define_activity marks token as inactive when boost is >= 500" do
     attrs = %{token_address: "abc123", boost: 500, name: "Alpha", ticker: "ALP"}
 
