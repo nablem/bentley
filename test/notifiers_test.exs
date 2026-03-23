@@ -4,6 +4,7 @@ defmodule Bentley.NotifiersTest do
   import Mox
 
   alias Bentley.Notifiers
+  alias Bentley.Notifiers.Criteria
   alias Bentley.Notifiers.Definition
   alias Bentley.Notifiers.Loader
   alias Bentley.Notifiers.Worker
@@ -480,6 +481,17 @@ defmodule Bentley.NotifiersTest do
            ]
 
     assert Enum.uniq(Enum.map(deliveries, & &1.telegram_channel)) == ["@shared"]
+  end
+
+  test "criteria boost filter treats nil boost as 0" do
+    now = ~N[2026-03-17 12:00:00]
+    criteria = %{boost: %{min: nil, max: 10}}
+
+    for boost <- [nil, 0, 5, 10] do
+      assert Criteria.match?(%{boost: boost}, criteria, now), "expected boost=#{inspect(boost)} to match"
+    end
+
+    refute Criteria.match?(%{boost: 11}, criteria, now)
   end
 
   defp insert_token!(attrs) do

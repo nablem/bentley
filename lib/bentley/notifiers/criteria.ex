@@ -25,6 +25,7 @@ defmodule Bentley.Notifiers.Criteria do
   end
 
   defp metric_value(token, :age_hours, now), do: age_in_hours(token, now)
+  defp metric_value(token, :boost, _now), do: Map.get(token, :boost) || 0
   defp metric_value(token, metric, _now), do: Map.get(token, metric)
 
   defp within_range?(nil, _range), do: false
