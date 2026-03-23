@@ -278,6 +278,13 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @confirm_poll_interval_ms 1_000
   @confirm_max_attempts 30
 
+  @doc false
+  @spec confirmation_succeeded?(map()) :: boolean()
+  def confirmation_succeeded?(status) when is_map(status) do
+    is_nil(Map.get(status, "err")) and
+      Map.get(status, "confirmationStatus") in ["confirmed", "finalized"]
+  end
+
   defp confirm_transaction(tx_signature, attempts \\ @confirm_max_attempts) do
     payload = %{
       "jsonrpc" => "2.0",
@@ -288,15 +295,18 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
     case rpc_post(payload) do
       {:ok, %{status: 200, body: %{"result" => %{"value" => [status]}}}} when is_map(status) ->
-        case Map.get(status, "confirmationStatus") do
-          conf when conf in ["confirmed", "finalized"] ->
+        cond do
+          confirmation_succeeded?(status) ->
             :ok
 
-          _ when attempts > 0 ->
+          not is_nil(Map.get(status, "err")) ->
+            {:error, {:transaction_failed, Map.get(status, "err")}}
+
+          attempts > 0 ->
             Process.sleep(@confirm_poll_interval_ms)
             confirm_transaction(tx_signature, attempts - 1)
 
-          _ ->
+          true ->
             {:error, :confirmation_timeout}
         end
 
