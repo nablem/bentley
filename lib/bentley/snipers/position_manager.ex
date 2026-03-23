@@ -51,6 +51,9 @@ defmodule Bentley.Snipers.PositionManager do
                ) do
           :ok
         else
+          {:error, {:insufficient_wallet_usdc, _wallet_usdc_balance, _min_wallet_usdc}} = error ->
+            error
+
           {:error, reason} = error ->
             TelegramNotifier.notify_buy_failure(definition, wallet_id, token, reason)
             error

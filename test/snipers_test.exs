@@ -277,6 +277,45 @@ defmodule Bentley.SnipersTest do
              PositionManager.open_position(definition, "early-microcap", token, "main", now)
   end
 
+  test "open_position does NOT send telegram message for insufficient_wallet_usdc" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-insufficient-usdc",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Insufficient USDC",
+        ticker: "IU"
+      })
+
+    definition = %Definition{
+      id: "insufficient-wallet",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: 500}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, fn options ->
+      assert options.wallet_id == "main"
+      {:ok, 250.0}
+    end)
+    # Should NOT call buy since wallet USDC is insufficient
+    |> deny(:buy, 3)
+
+    # Should NOT send a telegram message for this fallback error
+    Bentley.Telegram.ClientMock
+    |> deny(:send_message, 2)
+
+    assert {:error, {:insufficient_wallet_usdc, 250.0, 500}} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+
+
   test "reload replaces sniper workers when yaml definitions change" do
     path =
       write_yaml!("""
@@ -527,6 +566,163 @@ defmodule Bentley.SnipersTest do
       )
 
     assert position.sniper_id == "low-threshold"
+  end
+
+  test "stops buying after second-highest threshold succeeds without trying lowest" do
+    token =
+      insert_token!(%{
+        token_address: "token-stop-at-medium",
+        active: true,
+        market_cap: 55_000.0,
+        name: "Stop At Medium",
+        ticker: "SAM"
+      })
+
+    path =
+      write_yaml!("""
+      snipers:
+        - id: lowest-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 50
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: medium-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 250
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: highest-threshold
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 500
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+      """)
+
+    Application.put_env(:bentley, :snipers_file_path, path)
+
+    # Wallet has 300 USDC: enough for medium (250) and lowest (50), but not highest (500)
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, 2, fn options ->
+      assert options.wallet_id == "main"
+
+      case options.sniper_id do
+        "highest-threshold" -> {:ok, 300.0}
+        "medium-threshold" -> {:ok, 300.0}
+      end
+    end)
+
+    # Should only call buy once for medium-threshold, NOT for lowest-threshold
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, 1, fn %Token{token_address: "token-stop-at-medium"}, 100_000_000, options ->
+      assert options.wallet_id == "main"
+      assert options.sniper_id == "medium-threshold"
+      {:ok, %{units: 900.0, amount_usd: 100.0, tx_signature: "buy-stop-at-medium"}}
+    end)
+
+    # Should never reach lowest-threshold check since medium succeeded
+    assert :ok = Snipers.reload()
+    assert :ok = Snipers.trigger_on_notification("early-microcap", token)
+
+    wait_until(fn ->
+      Repo.aggregate(SniperPosition, :count, :id) == 1
+    end)
+
+    position =
+      Repo.get_by!(
+        SniperPosition,
+        token_address: "token-stop-at-medium",
+        wallet_id: "main"
+      )
+
+    assert position.sniper_id == "medium-threshold"
+  end
+
+  test "trigger does nothing when wallet balance is below all sniper thresholds" do
+    token =
+      insert_token!(%{
+        token_address: "token-all-thresholds-too-high",
+        active: true,
+        market_cap: 40_000.0,
+        name: "No Match",
+        ticker: "NM"
+      })
+
+    path =
+      write_yaml!("""
+      snipers:
+        - id: threshold-high
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 500
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+        - id: threshold-low
+          trigger_on_notifiers:
+            - early-microcap
+          wallet_ids:
+            - main
+          buy_config:
+            enabled: true
+            position_size_usd: 100
+            slippage_bps: 50
+            min_wallet_usdc: 200
+          exit_tiers:
+            - market_cap: 100000
+              sell_percent: 100
+      """)
+
+    Application.put_env(:bentley, :snipers_file_path, path)
+
+    # Wallet only has 50 USDC — below both thresholds (500 and 200)
+    Bentley.Snipers.ExecutorMock
+    |> expect(:wallet_usdc_balance, 2, fn options ->
+      assert options.wallet_id == "main"
+      {:ok, 50.0}
+    end)
+
+    # buy must never be called
+    Bentley.Snipers.ExecutorMock
+    |> deny(:buy, 3)
+
+    assert :ok = Snipers.reload()
+    assert :ok = Snipers.trigger_on_notification("early-microcap", token)
+
+    # No position is ever created, so we give the async tasks time to finish
+    # before asserting the count stays at zero
+    Process.sleep(300)
+
+    assert Repo.aggregate(SniperPosition, :count, :id) == 0
   end
 
   test "trigger resolves overlapping wallet by priority while unique wallet keeps its only sniper" do
