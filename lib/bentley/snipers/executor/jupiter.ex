@@ -21,6 +21,8 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @default_rpc_retry_attempts 5
   @default_rpc_retry_base_backoff_ms 250
   @default_rpc_retry_max_backoff_ms 2_500
+  @default_requote_retry_attempts 1
+  @default_requote_retry_delay_ms 150
   @default_send_tx_min_interval_ms 1_300
   @send_tx_last_ms_key {__MODULE__, :send_tx_last_ms}
 
@@ -29,20 +31,28 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @impl true
   def buy(%Token{} = token, amount_usdc_raw, options)
       when is_integer(amount_usdc_raw) and amount_usdc_raw > 0 do
+    slippage_bps = slippage_bps_from_options(options)
+
     with {:ok, wallet_id} <- wallet_id_from_options(options),
          {:ok, wallet} <- fetch_wallet(wallet_id),
          {:ok, balance_before} <-
            fetch_wallet_token_balance(wallet.public_key, token.token_address),
          {:ok, quote} <-
-           get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps_from_options(options)),
-         {:ok, tx_signature} <- execute_swap(quote, wallet),
+           get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps),
+         {:ok, {tx_signature, final_quote}} <-
+           execute_swap_with_requote(
+             quote,
+             wallet,
+             fn -> get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps) end,
+             requote_retry_attempts()
+           ),
          {:ok, balance_after} <-
            fetch_wallet_token_balance(wallet.public_key, token.token_address) do
       # Use the actual on-chain token balance delta as the authoritative unit count.
       # Fall back to the quote outAmount estimate only if the delta is non-positive
       # (guard against transient RPC lag on freshly confirmed transactions).
       actual_delta = balance_after - balance_before
-      units = if actual_delta > 0, do: actual_delta, else: quote_out_amount(quote)
+      units = if actual_delta > 0, do: actual_delta, else: quote_out_amount(final_quote)
 
       {:ok,
        %{
@@ -204,6 +214,38 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     end
   end
 
+  defp execute_swap_with_requote(quote, wallet, _refetch_quote, attempts_left)
+       when attempts_left < 0 do
+    execute_swap(quote, wallet)
+  end
+
+  defp execute_swap_with_requote(quote, wallet, refetch_quote, attempts_left)
+       when is_function(refetch_quote, 0) do
+    case execute_swap(quote, wallet) do
+      {:ok, tx_signature} ->
+        {:ok, {tx_signature, quote}}
+
+      {:error, {:transaction_failed, reason}} = error ->
+        if attempts_left > 0 and retryable_transaction_failure?(reason) do
+          Logger.warning(
+            "[Snipers] Swap failed with retryable on-chain error; requoting and retrying once more: #{inspect(reason)}"
+          )
+
+          requote_delay_ms = requote_retry_delay_ms()
+          if requote_delay_ms > 0, do: Process.sleep(requote_delay_ms)
+
+          with {:ok, refreshed_quote} <- refetch_quote.() do
+            execute_swap_with_requote(refreshed_quote, wallet, refetch_quote, attempts_left - 1)
+          end
+        else
+          error
+        end
+
+      other ->
+        other
+    end
+  end
+
   defp get_swap_transaction(quote_response, wallet_public_key) do
     payload = %{
       "quoteResponse" => quote_response,
@@ -284,6 +326,18 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     is_nil(Map.get(status, "err")) and
       Map.get(status, "confirmationStatus") in ["confirmed", "finalized"]
   end
+
+  @doc false
+  @spec retryable_transaction_failure?(term()) :: boolean()
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => 6001}]}) do
+    true
+  end
+
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6001"}]}) do
+    true
+  end
+
+  def retryable_transaction_failure?(_reason), do: false
 
   defp confirm_transaction(tx_signature, attempts \\ @confirm_max_attempts) do
     payload = %{
@@ -516,11 +570,32 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     env_positive_integer("SNIPER_SEND_TX_MIN_INTERVAL_MS", @default_send_tx_min_interval_ms)
   end
 
+  defp requote_retry_attempts do
+    env_non_neg_integer("SNIPER_REQUOTE_RETRY_ATTEMPTS", @default_requote_retry_attempts)
+  end
+
+  defp requote_retry_delay_ms do
+    env_non_neg_integer("SNIPER_REQUOTE_RETRY_DELAY_MS", @default_requote_retry_delay_ms)
+  end
+
   defp env_positive_integer(name, default) do
     case System.get_env(name) do
       value when is_binary(value) ->
         case Integer.parse(String.trim(value)) do
           {parsed, ""} when parsed > 0 -> parsed
+          _ -> default
+        end
+
+      _ ->
+        default
+    end
+  end
+
+  defp env_non_neg_integer(name, default) do
+    case System.get_env(name) do
+      value when is_binary(value) ->
+        case Integer.parse(String.trim(value)) do
+          {parsed, ""} when parsed >= 0 -> parsed
           _ -> default
         end
 

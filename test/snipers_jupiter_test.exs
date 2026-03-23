@@ -21,4 +21,19 @@ defmodule Bentley.Snipers.Executor.JupiterTest do
 
     refute Jupiter.confirmation_succeeded?(status)
   end
+
+  test "retryable_transaction_failure?/1 returns true for custom 6001" do
+    reason = %{"InstructionError" => [4, %{"Custom" => 6001}]}
+    assert Jupiter.retryable_transaction_failure?(reason)
+  end
+
+  test "retryable_transaction_failure?/1 returns false for non-6001 custom error" do
+    reason = %{"InstructionError" => [4, %{"Custom" => 7001}]}
+    refute Jupiter.retryable_transaction_failure?(reason)
+  end
+
+  test "retryable_transaction_failure?/1 returns false for non-custom instruction errors" do
+    reason = %{"InstructionError" => [4, :InsufficientFunds]}
+    refute Jupiter.retryable_transaction_failure?(reason)
+  end
 end
