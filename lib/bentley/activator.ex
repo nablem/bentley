@@ -88,7 +88,19 @@ defmodule Bentley.Activator do
 
   defp tiktok_creator_profile?(_), do: false
 
-  defp x_post_url?(x_url) when is_binary(x_url), do: String.contains?(x_url, "/status/")
+  defp x_post_url?(x_url) when is_binary(x_url) do
+    case URI.parse(x_url) do
+      %URI{path: path} when is_binary(path) ->
+        String.contains?(path, "/status/") or
+          String.starts_with?(path, "/intent") or
+          String.starts_with?(path, "/search") or
+          String.starts_with?(path, "/grok")
+
+      _ ->
+        false
+    end
+  end
+
   defp x_post_url?(_), do: false
 
   defp low_liquidity?(liquidity) when is_number(liquidity), do: liquidity < 1_000

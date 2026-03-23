@@ -73,40 +73,58 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "zero_volume_6h"
   end
 
-  test "define_activity marks token as inactive when tiktok_url path starts with /@" do
-    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/@alpha", name: "Alpha", ticker: "ALP"}
+  test "define_activity filters tiktok creator profile urls" do
+    blocked_tiktok_urls = [
+      "https://www.tiktok.com/@alpha",
+      "https://www.tiktok.com/@alpha/"
+    ]
 
-    result = Activator.define_activity(attrs)
+    Enum.each(blocked_tiktok_urls, fn tiktok_url ->
+      attrs = %{token_address: "abc123", tiktok_url: tiktok_url, name: "Alpha", ticker: "ALP"}
 
-    assert result.active == false
-    assert result.inactivity_reason == "tiktok_creator_profile"
+      result = Activator.define_activity(attrs)
+
+      assert result.active == false
+      assert result.inactivity_reason == "tiktok_creator_profile"
+    end)
+
+    allowed_tiktok_urls = [
+      "https://www.tiktok.com/@alpha/video/123",
+      "https://www.tiktok.com/discover?query=@alpha"
+    ]
+
+    Enum.each(allowed_tiktok_urls, fn tiktok_url ->
+      attrs = %{token_address: "abc123", tiktok_url: tiktok_url, name: "Alpha", ticker: "ALP"}
+
+      result = Activator.define_activity(attrs)
+
+      assert result.active == true
+      assert result.inactivity_reason == nil
+    end)
   end
 
-  test "define_activity keeps token active when tiktok_url is a creator video page" do
-    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/@alpha/video/123", name: "Alpha", ticker: "ALP"}
+  test "define_activity marks token as inactive for filtered X URL routes" do
+    blocked_x_urls = [
+      "https://x.com/alpha/status/123",
+      "https://x.com/intent/post?text=hello",
+      "https://x.com/search?q=alpha",
+      "https://x.com/grok"
+    ]
 
-    result = Activator.define_activity(attrs)
+    Enum.each(blocked_x_urls, fn x_url ->
+      attrs = %{token_address: "abc123", x_url: x_url, name: "Alpha", ticker: "ALP"}
 
-    assert result.active == true
-    assert result.inactivity_reason == nil
-  end
+      result = Activator.define_activity(attrs)
 
-  test "define_activity keeps token active when tiktok_url path is not a creator profile" do
-    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/discover?query=@alpha", name: "Alpha", ticker: "ALP"}
+      assert result.active == false
+      assert result.inactivity_reason == "x_post_url"
+    end)
 
-    result = Activator.define_activity(attrs)
+    allowed_attrs = %{token_address: "abc123", x_url: "https://x.com/alpha", name: "Alpha", ticker: "ALP"}
+    allowed_result = Activator.define_activity(allowed_attrs)
 
-    assert result.active == true
-    assert result.inactivity_reason == nil
-  end
-
-  test "define_activity marks token as inactive when x_url points to an X post" do
-    attrs = %{token_address: "abc123", x_url: "https://x.com/alpha/status/123", name: "Alpha", ticker: "ALP"}
-
-    result = Activator.define_activity(attrs)
-
-    assert result.active == false
-    assert result.inactivity_reason == "x_post_url"
+    assert allowed_result.active == true
+    assert allowed_result.inactivity_reason == nil
   end
 
   test "define_activity marks token as inactive when boost is >= 500" do
