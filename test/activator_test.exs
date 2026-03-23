@@ -73,13 +73,31 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "zero_volume_6h"
   end
 
-  test "define_activity marks token as inactive when tiktok_url contains creator handle" do
+  test "define_activity marks token as inactive when tiktok_url path starts with /@" do
     attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/@alpha", name: "Alpha", ticker: "ALP"}
 
     result = Activator.define_activity(attrs)
 
     assert result.active == false
     assert result.inactivity_reason == "tiktok_creator_profile"
+  end
+
+  test "define_activity keeps token active when tiktok_url is a creator video page" do
+    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/@alpha/video/123", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity keeps token active when tiktok_url path is not a creator profile" do
+    attrs = %{token_address: "abc123", tiktok_url: "https://www.tiktok.com/discover?query=@alpha", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
   end
 
   test "define_activity marks token as inactive when x_url points to an X post" do

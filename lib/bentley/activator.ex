@@ -77,7 +77,15 @@ defmodule Bentley.Activator do
   defp zero_volume_6h?(volume_6h) when is_number(volume_6h), do: volume_6h == 0
   defp zero_volume_6h?(_), do: false
 
-  defp tiktok_creator_profile?(tiktok_url) when is_binary(tiktok_url), do: String.contains?(tiktok_url, "@")
+  defp tiktok_creator_profile?(tiktok_url) when is_binary(tiktok_url) do
+    case URI.parse(tiktok_url) do
+      %URI{path: path} when is_binary(path) ->
+        String.match?(path, ~r|^/@[^/]+/?$|)
+
+      _ -> false
+    end
+  end
+
   defp tiktok_creator_profile?(_), do: false
 
   defp x_post_url?(x_url) when is_binary(x_url), do: String.contains?(x_url, "/status/")
