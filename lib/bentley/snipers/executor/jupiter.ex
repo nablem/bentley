@@ -3,6 +3,11 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   Live Solana/Jupiter executor for sniper buy/sell operations.
 
   Buy inputs are expected in Solana USDC base units (6 decimals).
+
+  Uses Solana preflight validation (skipPreflight: false) to reject invalid
+  transactions synchronously before they reach the chain. Implements additional
+  late confirmation recovery with balance-delta fallback as a defensive safety
+  net for RPC lag scenarios.
   """
 
   @behaviour Bentley.Snipers.Executor
@@ -23,6 +28,9 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   @default_rpc_retry_max_backoff_ms 2_500
   @default_requote_retry_attempts 1
   @default_requote_retry_delay_ms 150
+  @default_late_confirmation_attempts 10
+  @default_confirm_poll_interval_ms 1_000
+  @default_confirm_max_attempts 30
   @default_send_tx_min_interval_ms 1_300
   @send_tx_last_ms_key {__MODULE__, :send_tx_last_ms}
 
@@ -32,34 +40,42 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   def buy(%Token{} = token, amount_usdc_raw, options)
       when is_integer(amount_usdc_raw) and amount_usdc_raw > 0 do
     slippage_bps = slippage_bps_from_options(options)
+    amount_usd = options[:amount_usdc] || usdc_from_raw(amount_usdc_raw)
 
     with {:ok, wallet_id} <- wallet_id_from_options(options),
          {:ok, wallet} <- fetch_wallet(wallet_id),
          {:ok, balance_before} <-
            fetch_wallet_token_balance(wallet.public_key, token.token_address),
-         {:ok, quote} <-
-           get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps),
-         {:ok, {tx_signature, final_quote}} <-
-           execute_swap_with_requote(
+         {:ok, quote} <- get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps) do
+      case execute_swap_with_requote(
              quote,
              wallet,
              fn -> get_quote(@usdc_mint, token.token_address, amount_usdc_raw, slippage_bps) end,
              requote_retry_attempts()
-           ),
-         {:ok, balance_after} <-
-           fetch_wallet_token_balance(wallet.public_key, token.token_address) do
-      # Use the actual on-chain token balance delta as the authoritative unit count.
-      # Fall back to the quote outAmount estimate only if the delta is non-positive
-      # (guard against transient RPC lag on freshly confirmed transactions).
-      actual_delta = balance_after - balance_before
-      units = if actual_delta > 0, do: actual_delta, else: quote_out_amount(final_quote)
+           ) do
+        {:ok, {tx_signature, final_quote}} ->
+          build_buy_result(
+            wallet.public_key,
+            token.token_address,
+            balance_before,
+            tx_signature,
+            final_quote,
+            amount_usd
+          )
 
-      {:ok,
-       %{
-         units: units,
-         amount_usd: options[:amount_usdc] || usdc_from_raw(amount_usdc_raw),
-         tx_signature: tx_signature
-       }}
+        {:error, {:confirmation_timeout, tx_signature, timeout_quote}} ->
+          recover_buy_after_confirmation_timeout(
+            wallet.public_key,
+            token.token_address,
+            balance_before,
+            tx_signature,
+            timeout_quote,
+            amount_usd
+          )
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -197,7 +213,10 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       slippageBps: slippage_bps
     ]
 
-    Req.get("#{@jupiter_base_url}/quote", params: params, headers: jupiter_headers())
+    Req.get(
+      "#{@jupiter_base_url}/quote",
+      Keyword.merge([params: params, headers: jupiter_headers()], jupiter_req_options())
+    )
     |> case do
       {:ok, %{status: 200, body: body}} when is_map(body) -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, {:jupiter_quote_failed, status, body}}
@@ -208,9 +227,17 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   defp execute_swap(quote_response, wallet) do
     with {:ok, swap_tx_b64} <- get_swap_transaction(quote_response, wallet.public_key),
          {:ok, signed_tx_b64} <- sign_transaction(swap_tx_b64, wallet),
-         {:ok, tx_signature} <- send_transaction(signed_tx_b64),
-         :ok <- confirm_transaction(tx_signature) do
-      {:ok, tx_signature}
+         {:ok, tx_signature} <- send_transaction(signed_tx_b64) do
+      case confirm_transaction(tx_signature) do
+        :ok ->
+          {:ok, tx_signature}
+
+        {:error, :confirmation_timeout} ->
+          {:error, {:confirmation_timeout, tx_signature}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -224,6 +251,9 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     case execute_swap(quote, wallet) do
       {:ok, tx_signature} ->
         {:ok, {tx_signature, quote}}
+
+      {:error, {:confirmation_timeout, tx_signature}} ->
+        {:error, {:confirmation_timeout, tx_signature, quote}}
 
       {:error, {:transaction_failed, reason}} = error ->
         if attempts_left > 0 and retryable_transaction_failure?(reason) do
@@ -246,6 +276,136 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     end
   end
 
+  defp recover_buy_after_confirmation_timeout(
+         wallet_public_key,
+         token_address,
+         balance_before,
+         tx_signature,
+         timeout_quote,
+         amount_usd
+       ) do
+    Logger.warning(
+      "[Snipers] Buy confirmation timed out for tx #{tx_signature}; attempting late confirmation recovery"
+    )
+
+    case confirm_transaction(tx_signature, @default_late_confirmation_attempts) do
+      :ok ->
+        Logger.warning(
+          "[Snipers] Late confirmation succeeded for buy tx #{tx_signature}; persisting position"
+        )
+
+        build_buy_result(
+          wallet_public_key,
+          token_address,
+          balance_before,
+          tx_signature,
+          timeout_quote,
+          amount_usd
+        )
+
+      {:error, {:transaction_failed, reason}} ->
+        {:error, {:transaction_failed, reason}}
+
+      {:error, :confirmation_timeout} ->
+        # If RPC remains stale, accept only a positive on-chain balance delta as
+        # evidence of execution. Do not open a position from quote data alone.
+        case fetch_wallet_token_balance(wallet_public_key, token_address) do
+          {:ok, balance_after} ->
+            case recover_units_from_balance_delta(balance_before, balance_after) do
+              {:ok, actual_delta} ->
+                case validate_recovered_delta(actual_delta, timeout_quote) do
+                  :ok ->
+                    Logger.warning(
+                      "[Snipers] Buy tx #{tx_signature} remains unconfirmed via RPC but recovered from on-chain balance delta=#{actual_delta}"
+                    )
+
+                    {:ok, %{units: actual_delta, amount_usd: amount_usd, tx_signature: tx_signature}}
+
+                  {:error, :delta_mismatch} ->
+                    {:error, {:buy_unconfirmed_timeout, tx_signature}}
+                end
+
+              {:error, :buy_unconfirmed_timeout} ->
+                {:error, {:buy_unconfirmed_timeout, tx_signature}}
+            end
+
+          {:error, reason} ->
+            {:error, {:buy_unconfirmed_timeout, tx_signature, reason}}
+        end
+    end
+  end
+
+  defp build_buy_result(
+         wallet_public_key,
+         token_address,
+         balance_before,
+         tx_signature,
+         quote,
+         amount_usd
+       ) do
+    case fetch_wallet_token_balance(wallet_public_key, token_address) do
+      {:ok, balance_after} ->
+        {:ok,
+         %{
+           units: derive_buy_units(balance_before, balance_after, quote),
+           amount_usd: amount_usd,
+           tx_signature: tx_signature
+         }}
+
+      {:error, reason} ->
+        units = quote_out_amount(quote)
+
+        if units > 0 do
+          Logger.warning(
+            "[Snipers] Post-buy balance check failed for tx #{tx_signature}; using quote outAmount fallback: #{inspect(reason)}"
+          )
+
+          {:ok,
+           %{
+             units: units,
+             amount_usd: amount_usd,
+             tx_signature: tx_signature
+           }}
+        else
+          {:error, {:post_buy_balance_check_failed, reason}}
+        end
+    end
+  end
+
+  @doc false
+  @spec derive_buy_units(integer(), integer(), map()) :: integer()
+  def derive_buy_units(balance_before, balance_after, quote)
+      when is_integer(balance_before) and is_integer(balance_after) and is_map(quote) do
+    actual_delta = balance_after - balance_before
+    if actual_delta > 0, do: actual_delta, else: quote_out_amount(quote)
+  end
+
+  @doc false
+  @spec recover_units_from_balance_delta(integer(), integer()) :: {:ok, integer()} | {:error, :buy_unconfirmed_timeout}
+  def recover_units_from_balance_delta(balance_before, balance_after)
+      when is_integer(balance_before) and is_integer(balance_after) do
+    actual_delta = balance_after - balance_before
+    if actual_delta > 0, do: {:ok, actual_delta}, else: {:error, :buy_unconfirmed_timeout}
+  end
+
+  @doc false
+  @spec validate_recovered_delta(integer(), map()) :: :ok | {:error, :delta_mismatch}
+  def validate_recovered_delta(actual_delta, quote)
+      when is_integer(actual_delta) and is_map(quote) and actual_delta > 0 do
+    expected_delta = quote_out_amount(quote)
+
+    # Allow 5% variance to account for slippage and rounding differences
+    tolerance = max(div(expected_delta, 20), 1)
+
+    if abs(actual_delta - expected_delta) <= tolerance do
+      :ok
+    else
+      {:error, :delta_mismatch}
+    end
+  end
+
+  def validate_recovered_delta(_actual_delta, _quote), do: {:error, :delta_mismatch}
+
   defp get_swap_transaction(quote_response, wallet_public_key) do
     payload = %{
       "quoteResponse" => quote_response,
@@ -255,7 +415,10 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       "prioritizationFeeLamports" => "auto"
     }
 
-    Req.post("#{@jupiter_base_url}/swap", json: payload, headers: jupiter_headers())
+    Req.post(
+      "#{@jupiter_base_url}/swap",
+      Keyword.merge([json: payload, headers: jupiter_headers()], jupiter_req_options())
+    )
     |> case do
       {:ok, %{status: 200, body: %{"swapTransaction" => swap_tx_b64}}} when is_binary(swap_tx_b64) ->
         {:ok, swap_tx_b64}
@@ -295,7 +458,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       "method" => "sendTransaction",
       "params" => [
         signed_tx_b64,
-        %{"encoding" => "base64", "skipPreflight" => true}
+        %{"encoding" => "base64", "skipPreflight" => false}
       ]
     }
 
@@ -317,9 +480,6 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     end
   end
 
-  @confirm_poll_interval_ms 1_000
-  @confirm_max_attempts 30
-
   @doc false
   @spec confirmation_succeeded?(map()) :: boolean()
   def confirmation_succeeded?(status) when is_map(status) do
@@ -339,7 +499,9 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
   def retryable_transaction_failure?(_reason), do: false
 
-  defp confirm_transaction(tx_signature, attempts \\ @confirm_max_attempts) do
+  defp confirm_transaction(tx_signature), do: confirm_transaction(tx_signature, @default_confirm_max_attempts)
+
+  defp confirm_transaction(tx_signature, attempts) do
     payload = %{
       "jsonrpc" => "2.0",
       "id" => 1,
@@ -357,7 +519,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
             {:error, {:transaction_failed, Map.get(status, "err")}}
 
           attempts > 0 ->
-            Process.sleep(@confirm_poll_interval_ms)
+            Process.sleep(@default_confirm_poll_interval_ms)
             confirm_transaction(tx_signature, attempts - 1)
 
           true ->
@@ -365,7 +527,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
         end
 
       _ when attempts > 0 ->
-        Process.sleep(@confirm_poll_interval_ms)
+        Process.sleep(@default_confirm_poll_interval_ms)
         confirm_transaction(tx_signature, attempts - 1)
 
       _ ->
@@ -456,7 +618,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   defp rpc_post(payload, attempt) do
     method = rpc_method(payload)
 
-    case Req.post(rpc_url(), json: payload) do
+    case Req.post(rpc_url(), Keyword.merge([json: payload], solana_rpc_req_options())) do
       {:ok, response} = result ->
         if retryable_rpc_response?(response) and attempt < rpc_retry_attempts() do
           sleep_rpc_backoff(attempt, method, rpc_retry_reason(response))
@@ -576,6 +738,16 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
   defp requote_retry_delay_ms do
     env_non_neg_integer("SNIPER_REQUOTE_RETRY_DELAY_MS", @default_requote_retry_delay_ms)
+  end
+
+
+
+  defp jupiter_req_options do
+    Application.get_env(:bentley, :jupiter_req_options, [])
+  end
+
+  defp solana_rpc_req_options do
+    Application.get_env(:bentley, :solana_rpc_req_options, [])
   end
 
   defp env_positive_integer(name, default) do

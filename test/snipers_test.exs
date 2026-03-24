@@ -277,6 +277,82 @@ defmodule Bentley.SnipersTest do
              PositionManager.open_position(definition, "early-microcap", token, "main", now)
   end
 
+  test "open_position propagates buy_unconfirmed_timeout and sends failure notification" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-unconfirmed-timeout",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Unconfirmed Timeout",
+        ticker: "BUT"
+      })
+
+    definition = %Definition{
+      id: "buy-unconfirmed-timeout",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-unconfirmed-timeout"}, 100_000_000, _options ->
+      {:error, {:buy_unconfirmed_timeout, "tx-timeout-1"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $BUT (reason: {:buy_unconfirmed_timeout, \"tx-timeout-1\"})"
+
+      :ok
+    end)
+
+    assert {:error, {:buy_unconfirmed_timeout, "tx-timeout-1"}} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "open_position propagates buy_unconfirmed_timeout with nested reason and sends failure notification" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-unconfirmed-timeout-reason",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Unconfirmed Timeout Reason",
+        ticker: "BUR"
+      })
+
+    definition = %Definition{
+      id: "buy-unconfirmed-timeout-reason",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-unconfirmed-timeout-reason"}, 100_000_000, _options ->
+      {:error, {:buy_unconfirmed_timeout, "tx-timeout-2", :wallet_balance_failed}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $BUR (reason: {:buy_unconfirmed_timeout, \"tx-timeout-2\", :wallet_balance_failed})"
+
+      :ok
+    end)
+
+    assert {:error, {:buy_unconfirmed_timeout, "tx-timeout-2", :wallet_balance_failed}} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
   test "open_position does NOT send telegram message for insufficient_wallet_usdc" do
     now = ~N[2026-03-18 14:00:00]
 
