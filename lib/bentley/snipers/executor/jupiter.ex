@@ -86,16 +86,27 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     with {:ok, wallet_id} <- wallet_id_from_options(options),
          {:ok, wallet} <- fetch_wallet(wallet_id),
          {:ok, amount_in_raw} <- normalize_sell_units(units),
+         {:ok, balance_before} <-
+           fetch_wallet_token_balance(wallet.public_key, token.token_address),
          {:ok, quote} <-
-           get_quote(token.token_address, @usdc_mint, amount_in_raw, slippage_bps_from_options(options)),
-         {:ok, tx_signature} <- execute_swap(quote, wallet),
-         {:ok, out_amount_raw} <- parse_raw_amount(Map.get(quote, "outAmount")) do
-      {:ok,
-       %{
-         units: amount_in_raw,
-         amount_usd: usdc_from_raw(out_amount_raw),
-         tx_signature: tx_signature
-       }}
+           get_quote(token.token_address, @usdc_mint, amount_in_raw, slippage_bps_from_options(options)) do
+      case execute_swap(quote, wallet) do
+        {:ok, tx_signature} ->
+          build_sell_result(amount_in_raw, tx_signature, quote)
+
+        {:error, {:confirmation_timeout, tx_signature}} ->
+          recover_sell_after_confirmation_timeout(
+            wallet.public_key,
+            token.token_address,
+            balance_before,
+            amount_in_raw,
+            tx_signature,
+            quote
+          )
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -372,6 +383,70 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     end
   end
 
+  defp build_sell_result(amount_in_raw, tx_signature, quote) do
+    with {:ok, out_amount_raw} <- parse_raw_amount(Map.get(quote, "outAmount")) do
+      {:ok,
+       %{
+         units: amount_in_raw,
+         amount_usd: usdc_from_raw(out_amount_raw),
+         tx_signature: tx_signature
+       }}
+    end
+  end
+
+  defp recover_sell_after_confirmation_timeout(
+         wallet_public_key,
+         token_address,
+         balance_before,
+         amount_in_raw,
+         tx_signature,
+         timeout_quote
+       ) do
+    Logger.warning(
+      "[Snipers] Sell confirmation timed out for tx #{tx_signature}; attempting late confirmation recovery"
+    )
+
+    case confirm_transaction(tx_signature, @default_late_confirmation_attempts) do
+      :ok ->
+        Logger.warning(
+          "[Snipers] Late confirmation succeeded for sell tx #{tx_signature}; persisting sell result"
+        )
+
+        build_sell_result(amount_in_raw, tx_signature, timeout_quote)
+
+      {:error, {:transaction_failed, reason}} ->
+        {:error, {:transaction_failed, reason}}
+
+      {:error, :confirmation_timeout} ->
+        # If RPC remains stale, accept only a positive token balance reduction as
+        # evidence of execution. Do not persist a sell from quote data alone.
+        case fetch_wallet_token_balance(wallet_public_key, token_address) do
+          {:ok, balance_after} ->
+            case recover_sold_units_from_balance_delta(balance_before, balance_after) do
+              {:ok, sold_units_delta} ->
+                sold_units = min(sold_units_delta, amount_in_raw)
+
+                Logger.warning(
+                  "[Snipers] Sell tx #{tx_signature} remains unconfirmed via RPC but recovered from on-chain balance delta=#{sold_units}"
+                )
+
+                {:ok,
+                 %{
+                   units: sold_units,
+                   amount_usd: derive_sell_amount_usd(sold_units, amount_in_raw, timeout_quote),
+                   tx_signature: tx_signature
+                 }}
+
+              {:error, :sell_unconfirmed_timeout} ->
+                {:error, {:sell_unconfirmed_timeout, tx_signature}}
+            end
+
+          {:error, reason} ->
+            {:error, {:sell_unconfirmed_timeout, tx_signature, reason}}
+        end
+    end
+  end
+
   @doc false
   @spec derive_buy_units(integer(), integer(), map()) :: integer()
   def derive_buy_units(balance_before, balance_after, quote)
@@ -386,6 +461,15 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       when is_integer(balance_before) and is_integer(balance_after) do
     actual_delta = balance_after - balance_before
     if actual_delta > 0, do: {:ok, actual_delta}, else: {:error, :buy_unconfirmed_timeout}
+  end
+
+  @doc false
+  @spec recover_sold_units_from_balance_delta(integer(), integer()) ::
+          {:ok, integer()} | {:error, :sell_unconfirmed_timeout}
+  def recover_sold_units_from_balance_delta(balance_before, balance_after)
+      when is_integer(balance_before) and is_integer(balance_after) do
+    actual_delta = balance_before - balance_after
+    if actual_delta > 0, do: {:ok, actual_delta}, else: {:error, :sell_unconfirmed_timeout}
   end
 
   @doc false
@@ -405,6 +489,23 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   end
 
   def validate_recovered_delta(_actual_delta, _quote), do: {:error, :delta_mismatch}
+
+  defp derive_sell_amount_usd(sold_units, requested_units, quote)
+       when is_integer(sold_units) and sold_units > 0 and is_integer(requested_units) and
+              requested_units > 0 and is_map(quote) do
+    expected_out_raw = quote_out_amount(quote)
+
+    if expected_out_raw > 0 do
+      expected_out_raw
+      |> Kernel.*(sold_units / requested_units)
+      |> round()
+      |> usdc_from_raw()
+    else
+      0.0
+    end
+  end
+
+  defp derive_sell_amount_usd(_sold_units, _requested_units, _quote), do: 0.0
 
   defp get_swap_transaction(quote_response, wallet_public_key) do
     payload = %{

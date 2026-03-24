@@ -61,6 +61,18 @@ defmodule Bentley.Snipers.Executor.JupiterTest do
     assert Jupiter.recover_units_from_balance_delta(300, 250) == {:error, :buy_unconfirmed_timeout}
   end
 
+  test "recover_sold_units_from_balance_delta/2 returns positive sold delta" do
+    assert Jupiter.recover_sold_units_from_balance_delta(260, 200) == {:ok, 60}
+  end
+
+  test "recover_sold_units_from_balance_delta/2 returns timeout error when no positive sold delta" do
+    assert Jupiter.recover_sold_units_from_balance_delta(300, 300) ==
+             {:error, :sell_unconfirmed_timeout}
+
+    assert Jupiter.recover_sold_units_from_balance_delta(250, 300) ==
+             {:error, :sell_unconfirmed_timeout}
+  end
+
   test "validate_recovered_delta/2 accepts delta within 5% tolerance of expected" do
     quote = %{"outAmount" => "1000"}
     assert Jupiter.validate_recovered_delta(1000, quote) == :ok
