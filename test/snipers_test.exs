@@ -1421,6 +1421,67 @@ defmodule Bentley.SnipersTest do
              PositionManager.process_open_positions(definition, now)
   end
 
+  test "process_open_positions handles sell_unconfirmed_timeout by keeping position open" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-sell-unconfirmed-timeout",
+        active: true,
+        market_cap: 70_000.0,
+        name: "Sell Unconfirmed Timeout",
+        ticker: "SUT"
+      })
+
+    definition = %Definition{
+      id: "sell-unconfirmed-timeout",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-sell-unconfirmed-timeout",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-sell-unconfirmed-timeout"}, _options ->
+      {:ok, 500}
+    end)
+    |> expect(:sell, fn %Token{token_address: "token-sell-unconfirmed-timeout"}, 500.0, _options ->
+      {:error, {:sell_unconfirmed_timeout, "tx-sell-timeout-1"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to sell $SUT (reason: {:sell_unconfirmed_timeout, \"tx-sell-timeout-1\"})"
+
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 1}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert refreshed.remaining_units == 500.0
+  end
+
   test "process_open_positions sells all when token row is missing" do
     now = ~N[2026-03-18 14:00:00]
 
