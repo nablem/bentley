@@ -196,6 +196,24 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "invalid_ticker_format"
   end
 
+  test "define_activity marks token as inactive when ticker contains non-latin characters" do
+    attrs = %{token_address: "abc123", ticker: "토큰", name: "Alpha"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "invalid_ticker_format"
+  end
+
+  test "define_activity keeps token active when ticker uses allowed punctuation" do
+    attrs = %{token_address: "abc123", ticker: "ALP_2026-OK?!", name: "Alpha"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive when age is above 840 hours" do
     attrs = %{
       token_address: "abc123",
