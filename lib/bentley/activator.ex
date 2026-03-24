@@ -10,6 +10,7 @@ defmodule Bentley.Activator do
 
   @min_market_cap_threshold 2_500.0
   @age_limit_hours 840
+  @desc_terms_regex ~r/\b(?:a(\.?g)?\.?i|dapp|defi|decentralized|platform|trading|artist|dev|powered|driven|airdrops?|fees?|re[ -]launch(?:ed)?|^i('m)?)\b/i
 
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
@@ -43,6 +44,7 @@ defmodule Bentley.Activator do
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
       github_website?(Map.get(attrs, :website_url)) -> "github_website"
       livestream_related?(attrs) -> "livestream_related"
+      first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
       first_update? and name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
       first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
       first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
@@ -158,6 +160,12 @@ defmodule Bentley.Activator do
 
   defp name_too_long?(name) when is_binary(name), do: String.length(name) > 35
   defp name_too_long?(_), do: false
+
+  defp blocked_description_terms?(description) when is_binary(description) do
+    String.match?(description, @desc_terms_regex)
+  end
+
+  defp blocked_description_terms?(_), do: false
 
   defp invalid_name_charset?(name) when is_binary(name) do
     not String.match?(name, ~r/\A[a-zA-Z0-9\/_!?: -]+\z/)

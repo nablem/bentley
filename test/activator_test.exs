@@ -279,6 +279,37 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "name_contains_foreign_alphabet"
   end
 
+  test "define_activity marks token as inactive when description contains blocked terms on first update" do
+    blocked_descriptions = [
+      "AI-driven platform for everyone",
+      "A.I analytics for meme coins",
+      "AGI has been achieved by OmegaToken",
+      "Next-gen dapp launch",
+      "Decentralized liquidity network",
+      "Best trading terminal",
+      "Crypto artist collective",
+      "Built by a solo dev",
+      "Powered by memes",
+      "Community driven token",
+      "Massive airdrop incoming",
+      "Project re-launch this week",
+      "Project re launch today",
+      "Project re-launched now",
+      "No fees for early users",
+      "DeFi staking protocol",
+      "I'm a entrepreneur in crypto"
+    ]
+
+    Enum.each(blocked_descriptions, fn description ->
+      attrs = %{token_address: "abc123", ticker: "ALP", name: "Alpha", description: description}
+
+      result = Activator.define_activity(attrs)
+
+      assert result.active == false
+      assert result.inactivity_reason == "suspicious_description"
+    end)
+  end
+
   test "define_activity marks token as inactive when name matches suspicious term" do
     suspicious_terms_file_path = write_suspicious_terms_file(["rug", "^scam", "dump$"])
     Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
@@ -317,6 +348,21 @@ defmodule Bentley.ActivatorTest do
       token_address: "   ",
       ticker: "AL P",
       name: "This name is definitely over thirty chars",
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity skips blocked description check after first update" do
+    attrs = %{
+      token_address: "abc123",
+      ticker: "ALP",
+      name: "Alpha",
+      description: "AI trading platform",
       last_checked_at: ~N[2026-03-16 00:00:00]
     }
 
