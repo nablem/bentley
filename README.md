@@ -523,3 +523,20 @@ If a token's `inactivity_reason` is `suspicious_name`, run this to see exactly w
 ```
 
 Replace `TOKEN_NAME` with the token name.
+
+### Find latest tokens marked inactive by suspicious terms
+
+If you want the most recent tokens flagged by suspicious terms (`inactivity_reason = suspicious_name`), run this in IEx:
+
+```elixir
+import Ecto.Query
+
+Bentley.Repo.all(
+  from(t in Bentley.Schema.Token,
+    where: t.active == false and t.inactivity_reason == "suspicious_name",
+    order_by: [desc: t.inserted_at],
+    limit: 20,
+    select: %{name: t.name, token_address: t.token_address, last_checked_at: t.last_checked_at}
+  )
+)
+```
