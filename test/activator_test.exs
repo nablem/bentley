@@ -150,6 +150,34 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "livestream_related"
   end
 
+  test "define_activity marks token as inactive for github website" do
+    attrs = %{
+      token_address: "abc123",
+      website_url: "https://github.com/febo/p-token",
+      name: "Alpha",
+      ticker: "ALP"
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "github_website"
+  end
+
+  test "define_activity does not mark token inactive for non-github website" do
+    attrs = %{
+      token_address: "abc123",
+      website_url: "https://gitlab.com/example/project",
+      name: "Alpha",
+      ticker: "ALP"
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive when name or ticker is nil" do
     attrs = %{token_address: "abc123", name: nil, ticker: "ALP"}
 

@@ -41,6 +41,7 @@ defmodule Bentley.Activator do
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
+      github_website?(Map.get(attrs, :website_url)) -> "github_website"
       livestream_related?(attrs) -> "livestream_related"
       first_update? and name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
       first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
@@ -108,6 +109,23 @@ defmodule Bentley.Activator do
 
   defp high_boost?(boost) when is_number(boost), do: boost >= 500
   defp high_boost?(_), do: false
+
+  defp github_website?(website_url) when is_binary(website_url) do
+    case URI.parse(website_url) do
+      %URI{host: host} when is_binary(host) ->
+        normalized_host =
+          host
+          |> String.downcase()
+          |> String.trim_leading("www.")
+
+        String.ends_with?(normalized_host, "github.com")
+
+      _ ->
+        false
+    end
+  end
+
+  defp github_website?(_), do: false
 
   defp livestream_related?(attrs) do
     [Map.get(attrs, :website_url), Map.get(attrs, :url)]
