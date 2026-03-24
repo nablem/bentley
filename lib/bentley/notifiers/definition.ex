@@ -8,6 +8,7 @@ defmodule Bentley.Notifiers.Definition do
           | :volume_1h
           | :volume_6h
           | :volume_24h
+          | :change_5m
           | :change_1h
           | :change_6h
           | :change_24h
@@ -42,6 +43,7 @@ defmodule Bentley.Notifiers.Definition do
     :volume_1h,
     :volume_6h,
     :volume_24h,
+    :change_5m,
     :change_1h,
     :change_6h,
     :change_24h,

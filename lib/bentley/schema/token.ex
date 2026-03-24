@@ -25,6 +25,7 @@ defmodule Bentley.Schema.Token do
     field(:volume_1h, :float)
     field(:volume_6h, :float)
     field(:volume_24h, :float)
+    field(:change_5m, :float)
     field(:change_1h, :float)
     field(:change_6h, :float)
     field(:change_24h, :float)
@@ -59,6 +60,7 @@ defmodule Bentley.Schema.Token do
       :volume_1h,
       :volume_6h,
       :volume_24h,
+      :change_5m,
       :change_1h,
       :change_6h,
       :change_24h,

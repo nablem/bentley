@@ -74,7 +74,7 @@ notifiers:
 ```
 
 Supported criteria keys are `age_hours`, `market_cap`, `liquidity`, `volume_1h`,
-`volume_6h`, `volume_24h`, `change_1h`, `change_6h`, `change_24h`, `boost`, and `ath`.
+`volume_6h`, `volume_24h`, `change_5m`, `change_1h`, `change_6h`, `change_24h`, `boost`, and `ath`.
 Each criterion accepts `min`, `max`, or both.
 
 Each notifier has its own `telegram_channel`. Multiple notifiers may point to the

@@ -108,6 +108,7 @@ defmodule Bentley.Updater do
       volume_1h: normalize_number(get_in(details, ["volume", "h1"])),
       volume_6h: normalize_number(get_in(details, ["volume", "h6"])),
       volume_24h: normalize_number(get_in(details, ["volume", "h24"])),
+      change_5m: normalize_number(get_in(details, ["priceChange", "m5"])),
       change_1h: normalize_number(get_in(details, ["priceChange", "h1"])),
       change_6h: normalize_number(get_in(details, ["priceChange", "h6"])),
       change_24h: normalize_number(get_in(details, ["priceChange", "h24"])),

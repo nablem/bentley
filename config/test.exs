@@ -12,4 +12,7 @@ config :bentley,
 
 config :bentley, Bentley.Repo,
   database: "priv/repo/bentley_test.db",
-  pool: Ecto.Adapters.SQL.Sandbox
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 20,
+  queue_target: 15_000,
+  queue_interval: 15_000

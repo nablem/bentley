@@ -27,7 +27,7 @@ defmodule Bentley.UpdaterTest do
       "marketCap" => 42_000,
       "liquidity" => %{"usd" => 99_500},
       "volume" => %{"h1" => 1_200, "h6" => 5_500, "h24" => 24_000},
-      "priceChange" => %{"h1" => 12.5, "h6" => -3.1, "h24" => 8.7},
+      "priceChange" => %{"m5" => -6.99, "h1" => 12.5, "h6" => -3.1, "h24" => 8.7},
       "info" => %{
         "imageUrl" => "https://cdn.dex.example/icon.png",
         "websites" => [%{"url" => "https://alpha.example"}],
@@ -61,6 +61,7 @@ defmodule Bentley.UpdaterTest do
     assert token.volume_1h == 1_200.0
     assert token.volume_6h == 5_500.0
     assert token.volume_24h == 24_000.0
+    assert token.change_5m == -6.99
     assert token.change_1h == 12.5
     assert token.change_6h == -3.1
     assert token.change_24h == 8.7
@@ -87,6 +88,7 @@ defmodule Bentley.UpdaterTest do
       volume_1h: 10.0,
       volume_6h: 11.0,
       volume_24h: 12.0,
+      change_5m: 0.5,
       change_1h: 1.0,
       change_6h: 2.0,
       change_24h: 3.0,
@@ -114,6 +116,7 @@ defmodule Bentley.UpdaterTest do
     assert token.volume_1h == 10.0
     assert token.volume_6h == 11.0
     assert token.volume_24h == 12.0
+    assert token.change_5m == 0.5
     assert token.change_1h == 1.0
     assert token.change_6h == 2.0
     assert token.change_24h == 3.0
@@ -135,6 +138,7 @@ defmodule Bentley.UpdaterTest do
       volume_1h: 30.0,
       volume_6h: 40.0,
       volume_24h: 50.0,
+      change_5m: 55.0,
       change_1h: 60.0,
       change_6h: 70.0,
       change_24h: 80.0
@@ -147,7 +151,7 @@ defmodule Bentley.UpdaterTest do
       "marketCap" => "bad",
       "liquidity" => %{"usd" => "bad"},
       "volume" => %{"h1" => "bad", "h6" => "bad", "h24" => "bad"},
-      "priceChange" => %{"h1" => "bad", "h6" => "bad", "h24" => "bad"}
+      "priceChange" => %{"m5" => "bad", "h1" => "bad", "h6" => "bad", "h24" => "bad"}
     }
 
     assert {:ok, _} = Updater.update_token_from_details(token_address, details)
@@ -160,6 +164,7 @@ defmodule Bentley.UpdaterTest do
     assert token.volume_1h == 30.0
     assert token.volume_6h == 40.0
     assert token.volume_24h == 50.0
+    assert token.change_5m == 55.0
     assert token.change_1h == 60.0
     assert token.change_6h == 70.0
     assert token.change_24h == 80.0

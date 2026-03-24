@@ -71,6 +71,63 @@ defmodule Bentley.NotifiersTest do
             ]} = Loader.load_from_file(path)
   end
 
+  test "loader parses full metric criteria including change_5m" do
+    path =
+      write_yaml!("""
+      notifiers:
+        - id: metrics
+          telegram_channel: "@metrics"
+          criteria:
+            age_hours:
+              min: 1
+              max: 24
+            market_cap:
+              min: 1000
+              max: 50000
+            liquidity:
+              min: 100
+            volume_1h:
+              min: 10
+            volume_6h:
+              min: 20
+            volume_24h:
+              min: 30
+            change_5m:
+              min: -10
+              max: 15
+            change_1h:
+              min: -20
+              max: 30
+            change_6h:
+              min: -40
+              max: 60
+            change_24h:
+              min: -80
+              max: 120
+            boost:
+              min: 0
+            ath:
+              min: 5000
+      """)
+
+    assert {:ok, [%Definition{criteria: criteria}]} = Loader.load_from_file(path)
+
+    assert criteria == %{
+             age_hours: %{min: 1, max: 24},
+             market_cap: %{min: 1000, max: 50000},
+             liquidity: %{min: 100, max: nil},
+             volume_1h: %{min: 10, max: nil},
+             volume_6h: %{min: 20, max: nil},
+             volume_24h: %{min: 30, max: nil},
+             change_5m: %{min: -10, max: 15},
+             change_1h: %{min: -20, max: 30},
+             change_6h: %{min: -40, max: 60},
+             change_24h: %{min: -80, max: 120},
+             boost: %{min: 0, max: nil},
+             ath: %{min: 5000, max: nil}
+           }
+  end
+
   test "loader rejects duplicate notifier ids" do
     path =
       write_yaml!("""
@@ -287,6 +344,47 @@ defmodule Bentley.NotifiersTest do
 
     deliveries = Repo.all(NotificationDelivery)
     assert Enum.map(deliveries, & &1.token_address) == ["token-checked"]
+  end
+
+  test "deliver_notifications filters by change_5m criteria" do
+    now = ~N[2026-03-17 12:00:00]
+
+    insert_token!(%{
+      token_address: "token-change-5m-match",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Fast Mover",
+      ticker: "FST",
+      change_5m: 4.2
+    })
+
+    insert_token!(%{
+      token_address: "token-change-5m-no-match",
+      active: true,
+      created_on_chain_at: ~N[2026-03-17 11:00:00],
+      name: "Slow Mover",
+      ticker: "SLW",
+      change_5m: -12.0
+    })
+
+    definition = %Definition{
+      id: "change-5m-filter",
+      telegram_channel: "@change-5m-filter",
+      criteria: %{change_5m: %{min: -5.0, max: 10.0}}
+    }
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@change-5m-filter", message ->
+      assert message =~ "Fast Mover"
+      refute message =~ "Slow Mover"
+      :ok
+    end)
+
+    assert {:ok, %{matched: 1, sent: 1, failed: 0}} =
+             Worker.deliver_notifications(definition, now)
+
+    deliveries = Repo.all(NotificationDelivery)
+    assert Enum.map(deliveries, & &1.token_address) == ["token-change-5m-match"]
   end
 
   test "dependent notifier sends only after prerequisite notifier sent the token" do
