@@ -96,7 +96,6 @@ defmodule Bentley.Activator do
       %URI{path: path} when is_binary(path) ->
         String.contains?(path, "/status/") or
           String.starts_with?(path, "/intent") or
-          String.starts_with?(path, "/search") or
           String.starts_with?(path, "/grok")
 
       _ ->

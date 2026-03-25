@@ -107,7 +107,6 @@ defmodule Bentley.ActivatorTest do
     blocked_x_urls = [
       "https://x.com/alpha/status/123",
       "https://x.com/intent/post?text=hello",
-      "https://x.com/search?q=alpha",
       "https://x.com/grok"
     ]
 
@@ -120,11 +119,18 @@ defmodule Bentley.ActivatorTest do
       assert result.inactivity_reason == "x_post_url"
     end)
 
-    allowed_attrs = %{token_address: "abc123", x_url: "https://x.com/alpha", name: "Alpha", ticker: "ALP"}
-    allowed_result = Activator.define_activity(allowed_attrs)
+    allowed_x_urls = [
+      "https://x.com/alpha",
+      "https://x.com/search?q=alpha"
+    ]
 
-    assert allowed_result.active == true
-    assert allowed_result.inactivity_reason == nil
+    Enum.each(allowed_x_urls, fn x_url ->
+      allowed_attrs = %{token_address: "abc123", x_url: x_url, name: "Alpha", ticker: "ALP"}
+      allowed_result = Activator.define_activity(allowed_attrs)
+
+      assert allowed_result.active == true
+      assert allowed_result.inactivity_reason == nil
+    end)
   end
 
   test "define_activity marks token as inactive when boost is >= 500" do
