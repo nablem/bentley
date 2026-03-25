@@ -220,6 +220,15 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == nil
   end
 
+  test "define_activity keeps token active when ticker starts with dollar sign" do
+    attrs = %{token_address: "abc123", ticker: "$ALP", name: "Alpha"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive when age is above 840 hours" do
     attrs = %{
       token_address: "abc123",

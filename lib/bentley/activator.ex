@@ -59,7 +59,7 @@ defmodule Bentley.Activator do
   end
 
   defp invalid_ticker_format?(ticker) when is_binary(ticker) do
-    not String.match?(ticker, ~r/\A[a-zA-Z0-9_?!-]+\z/)
+    not String.match?(ticker, ~r/\A\$?[a-zA-Z0-9_?!-]+\z/)
   end
 
   defp invalid_ticker_format?(_), do: false
