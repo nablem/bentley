@@ -294,6 +294,8 @@ defmodule Bentley.ActivatorTest do
       "Decentralized liquidity network",
       "Best trading terminal",
       "Crypto artist collective",
+      "By BetaToken creator",
+      "By @gamma",
       "Built by a solo dev",
       "Powered by memes",
       "Community driven token",
