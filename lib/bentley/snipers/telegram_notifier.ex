@@ -79,6 +79,7 @@ defmodule Bentley.Snipers.TelegramNotifier do
     # %{"code" => -32002, "data" => %{"err" => %{"InstructionError" => [idx, %{"Custom" => code}]}, ...}}
     code = get_in(payload, ["code"])
     instruction_error = get_in(payload, ["data", "err", "InstructionError"])
+    rpc_message = get_in(payload, ["message"])
     custom = extract_custom_error(instruction_error)
 
     base =
@@ -89,8 +90,14 @@ defmodule Bentley.Snipers.TelegramNotifier do
         is_binary(custom) ->
           "send_transaction_failed code=#{inspect(code)} custom=#{custom}"
 
-        true ->
+        not is_nil(instruction_error) ->
           "send_transaction_failed code=#{inspect(code)} instruction_error=#{inspect(instruction_error)}"
+
+        is_binary(rpc_message) and rpc_message != "" ->
+          "send_transaction_failed code=#{inspect(code)} rpc_message=#{inspect(rpc_message)}"
+
+        true ->
+          "send_transaction_failed code=#{inspect(code)} payload=#{inspect(payload)}"
       end
 
     truncate(base, @max_reason_chars)

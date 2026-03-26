@@ -296,6 +296,36 @@ defmodule Bentley.SnipersTest do
     assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
   end
 
+  test "telegram notifier includes rpc message when instruction error is missing" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-rpc-message",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32602,
+         "message" => "Invalid params: invalid base64 encoding",
+         "data" => %{}
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32602 rpc_message=\"Invalid params: invalid base64 encoding\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
   test "telegram notifier truncates long failure reason" do
     definition = %Definition{
       id: "truncate-reason",
