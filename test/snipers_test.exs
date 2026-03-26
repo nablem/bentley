@@ -206,6 +206,200 @@ defmodule Bentley.SnipersTest do
     assert :ok = TelegramNotifier.notify_sell_success(definition, "main", token, 99_999_999)
   end
 
+  test "telegram notifier formats send_transaction_failed custom error payload" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{
+           "err" => %{"InstructionError" => [3, %{"Custom" => 6001}]}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main failed to buy $FMT (reason: send_transaction_failed code=-32002 custom=6001)"
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier falls back when send_transaction_failed payload is unrecognized" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-fallback",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{
+           "err" => %{"InstructionError" => "unexpected"}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32002 instruction_error=\"unexpected\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier falls back when send_transaction_failed code is missing" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-missing-code",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "data" => %{
+           "err" => %{"InstructionError" => [0, %{"Other" => 123}]}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=nil instruction_error=[0, %{\"Other\" => 123}])"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier includes rpc message when instruction error is missing" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-rpc-message",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32602,
+         "message" => "Invalid params: invalid base64 encoding",
+         "data" => %{}
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32602 rpc_message=\"Invalid params: invalid base64 encoding\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier handles send_transaction_failed when rpc err is a string" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-rpc-err-string",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{"err" => "BlockhashNotFound"}
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32002 rpc_err=\"BlockhashNotFound\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier truncates long failure reason" do
+    definition = %Definition{
+      id: "truncate-reason",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "TRN", token_address: "trn-token"}
+    reason = {:transaction_failed, String.duplicate("x", 5_000)}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert String.starts_with?(message, "main failed to sell $TRN (reason: transaction_failed ")
+      assert String.ends_with?(message, "...)")
+      assert String.length(message) < 900
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_sell_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier truncates overly long telegram message" do
+    definition = %Definition{
+      id: "truncate-message",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    long_wallet_id = String.duplicate("wallet", 700)
+    token = %{ticker: "LONG", token_address: "long-token"}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert String.length(message) == 3500
+      assert String.ends_with?(message, "...")
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_success(definition, long_wallet_id, token, 1)
+  end
+
   test "open_position sends telegram message on buy success" do
     now = ~N[2026-03-18 14:00:00]
 
@@ -274,6 +468,82 @@ defmodule Bentley.SnipersTest do
     end)
 
     assert {:error, :quote_failed} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "open_position propagates buy_unconfirmed_timeout and sends failure notification" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-unconfirmed-timeout",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Unconfirmed Timeout",
+        ticker: "BUT"
+      })
+
+    definition = %Definition{
+      id: "buy-unconfirmed-timeout",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-unconfirmed-timeout"}, 100_000_000, _options ->
+      {:error, {:buy_unconfirmed_timeout, "tx-timeout-1"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $BUT (reason: {:buy_unconfirmed_timeout, \"tx-timeout-1\"})"
+
+      :ok
+    end)
+
+    assert {:error, {:buy_unconfirmed_timeout, "tx-timeout-1"}} =
+             PositionManager.open_position(definition, "early-microcap", token, "main", now)
+  end
+
+  test "open_position propagates buy_unconfirmed_timeout with nested reason and sends failure notification" do
+    now = ~N[2026-03-18 14:00:00]
+
+    token =
+      insert_token!(%{
+        token_address: "token-buy-unconfirmed-timeout-reason",
+        active: true,
+        market_cap: 30_000.0,
+        name: "Buy Unconfirmed Timeout Reason",
+        ticker: "BUR"
+      })
+
+    definition = %Definition{
+      id: "buy-unconfirmed-timeout-reason",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:buy, fn %Token{token_address: "token-buy-unconfirmed-timeout-reason"}, 100_000_000, _options ->
+      {:error, {:buy_unconfirmed_timeout, "tx-timeout-2", :wallet_balance_failed}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $BUR (reason: {:buy_unconfirmed_timeout, \"tx-timeout-2\", :wallet_balance_failed})"
+
+      :ok
+    end)
+
+    assert {:error, {:buy_unconfirmed_timeout, "tx-timeout-2", :wallet_balance_failed}} =
              PositionManager.open_position(definition, "early-microcap", token, "main", now)
   end
 
@@ -1343,6 +1613,67 @@ defmodule Bentley.SnipersTest do
 
     assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 1}} =
              PositionManager.process_open_positions(definition, now)
+  end
+
+  test "process_open_positions handles sell_unconfirmed_timeout by keeping position open" do
+    now = ~N[2026-03-18 14:00:00]
+
+    _token =
+      insert_token!(%{
+        token_address: "token-sell-unconfirmed-timeout",
+        active: true,
+        market_cap: 70_000.0,
+        name: "Sell Unconfirmed Timeout",
+        ticker: "SUT"
+      })
+
+    definition = %Definition{
+      id: "sell-unconfirmed-timeout",
+      trigger_on_notifier_ids: ["early-microcap"],
+      wallet_ids: ["main"],
+      telegram_channel: "@sniper",
+      exit_tiers: [%{market_cap: 60_000, sell_percent: 100}],
+      buy_config: %{enabled: true, position_size_usd: 100, slippage_bps: 50, min_wallet_usdc: nil}
+    }
+
+    {:ok, position} =
+      %SniperPosition{}
+      |> SniperPosition.changeset(%{
+        sniper_id: definition.id,
+        notifier_id: "early-microcap",
+        token_address: "token-sell-unconfirmed-timeout",
+        wallet_id: "main",
+        entry_market_cap: 10_000.0,
+        position_size_usd: 100.0,
+        initial_units: 500.0,
+        remaining_units: 500.0,
+        status: "open",
+        opened_at: now
+      })
+      |> Repo.insert()
+
+    Bentley.Snipers.ExecutorMock
+    |> expect(:token_balance, fn %Token{token_address: "token-sell-unconfirmed-timeout"}, _options ->
+      {:ok, 500}
+    end)
+    |> expect(:sell, fn %Token{token_address: "token-sell-unconfirmed-timeout"}, 500.0, _options ->
+      {:error, {:sell_unconfirmed_timeout, "tx-sell-timeout-1"}}
+    end)
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to sell $SUT (reason: {:sell_unconfirmed_timeout, \"tx-sell-timeout-1\"})"
+
+      :ok
+    end)
+
+    assert {:ok, %{processed: 1, sells: 0, closed: 0, failed: 1}} =
+             PositionManager.process_open_positions(definition, now)
+
+    refreshed = Repo.get!(SniperPosition, position.id)
+    assert refreshed.status == "open"
+    assert refreshed.remaining_units == 500.0
   end
 
   test "process_open_positions sells all when token row is missing" do

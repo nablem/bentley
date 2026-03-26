@@ -41,3 +41,6 @@ snipers.yaml
 
 # Local VSCode settings
 .vscode/
+
+# Test yaml files
+*_test.yaml
