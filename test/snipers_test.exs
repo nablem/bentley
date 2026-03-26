@@ -326,6 +326,35 @@ defmodule Bentley.SnipersTest do
     assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
   end
 
+  test "telegram notifier handles send_transaction_failed when rpc err is a string" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-rpc-err-string",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{"err" => "BlockhashNotFound"}
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32002 rpc_err=\"BlockhashNotFound\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
   test "telegram notifier truncates long failure reason" do
     definition = %Definition{
       id: "truncate-reason",

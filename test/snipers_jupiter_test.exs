@@ -70,6 +70,16 @@ defmodule Bentley.Snipers.Executor.JupiterTest do
     assert Jupiter.retryable_transaction_failure?(reason)
   end
 
+  test "retryable_transaction_failure?/1 returns true for custom 6002" do
+    reason = %{"InstructionError" => [4, %{"Custom" => 6002}]}
+    assert Jupiter.retryable_transaction_failure?(reason)
+  end
+
+  test "retryable_transaction_failure?/1 returns true for custom 6024" do
+    reason = %{"InstructionError" => [4, %{"Custom" => 6024}]}
+    assert Jupiter.retryable_transaction_failure?(reason)
+  end
+
   test "retryable_transaction_failure?/1 returns true for custom string 6001" do
     reason = %{"InstructionError" => [4, %{"Custom" => "6001"}]}
     assert Jupiter.retryable_transaction_failure?(reason)
@@ -77,6 +87,16 @@ defmodule Bentley.Snipers.Executor.JupiterTest do
 
   test "retryable_transaction_failure?/1 returns true for custom string 6017" do
     reason = %{"InstructionError" => [4, %{"Custom" => "6017"}]}
+    assert Jupiter.retryable_transaction_failure?(reason)
+  end
+
+  test "retryable_transaction_failure?/1 returns true for custom string 6002" do
+    reason = %{"InstructionError" => [4, %{"Custom" => "6002"}]}
+    assert Jupiter.retryable_transaction_failure?(reason)
+  end
+
+  test "retryable_transaction_failure?/1 returns true for custom string 6024" do
+    reason = %{"InstructionError" => [4, %{"Custom" => "6024"}]}
     assert Jupiter.retryable_transaction_failure?(reason)
   end
 
@@ -95,6 +115,26 @@ defmodule Bentley.Snipers.Executor.JupiterTest do
       "code" => -32002,
       "message" => "Transaction simulation failed",
       "data" => %{"err" => %{"InstructionError" => [4, %{"Custom" => 6017}]}}
+    }
+
+    assert Jupiter.retryable_send_transaction_failure?(reason)
+  end
+
+  test "retryable_send_transaction_failure?/1 returns true for nested custom 6002" do
+    reason = %{
+      "code" => -32002,
+      "message" => "Transaction simulation failed",
+      "data" => %{"err" => %{"InstructionError" => [4, %{"Custom" => 6002}]}}
+    }
+
+    assert Jupiter.retryable_send_transaction_failure?(reason)
+  end
+
+  test "retryable_send_transaction_failure?/1 returns true for nested custom 6024" do
+    reason = %{
+      "code" => -32002,
+      "message" => "Transaction simulation failed",
+      "data" => %{"err" => %{"InstructionError" => [4, %{"Custom" => 6024}]}}
     }
 
     assert Jupiter.retryable_send_transaction_failure?(reason)

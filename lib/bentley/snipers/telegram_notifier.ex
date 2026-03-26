@@ -74,11 +74,12 @@ defmodule Bentley.Snipers.TelegramNotifier do
     end
   end
 
-  defp format_failure_reason({:send_transaction_failed, payload}) do
+  defp format_failure_reason({:send_transaction_failed, payload}) when is_map(payload) do
     # Typical Solana/Jupiter payload shape:
     # %{"code" => -32002, "data" => %{"err" => %{"InstructionError" => [idx, %{"Custom" => code}]}, ...}}
     code = get_in(payload, ["code"])
-    instruction_error = get_in(payload, ["data", "err", "InstructionError"])
+    rpc_err = get_in(payload, ["data", "err"])
+    instruction_error = extract_instruction_error(rpc_err)
     rpc_message = get_in(payload, ["message"])
     custom = extract_custom_error(instruction_error)
 
@@ -93,6 +94,9 @@ defmodule Bentley.Snipers.TelegramNotifier do
         not is_nil(instruction_error) ->
           "send_transaction_failed code=#{inspect(code)} instruction_error=#{inspect(instruction_error)}"
 
+        not is_nil(rpc_err) ->
+          "send_transaction_failed code=#{inspect(code)} rpc_err=#{inspect(rpc_err)}"
+
         is_binary(rpc_message) and rpc_message != "" ->
           "send_transaction_failed code=#{inspect(code)} rpc_message=#{inspect(rpc_message)}"
 
@@ -101,6 +105,10 @@ defmodule Bentley.Snipers.TelegramNotifier do
       end
 
     truncate(base, @max_reason_chars)
+  end
+
+  defp format_failure_reason({:send_transaction_failed, payload}) do
+    truncate("send_transaction_failed #{inspect(payload)}", @max_reason_chars)
   end
 
   defp format_failure_reason({:transaction_failed, payload}) do
@@ -113,6 +121,9 @@ defmodule Bentley.Snipers.TelegramNotifier do
 
   defp extract_custom_error([_idx, %{"Custom" => custom}]), do: custom
   defp extract_custom_error(_), do: nil
+
+  defp extract_instruction_error(%{"InstructionError" => instruction_error}), do: instruction_error
+  defp extract_instruction_error(_), do: nil
 
   defp truncate(value, max_chars) when is_binary(value) and is_integer(max_chars) and max_chars > 3 do
     if String.length(value) > max_chars do

@@ -610,11 +610,27 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     true
   end
 
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => 6002}]}) do
+    true
+  end
+
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => 6024}]}) do
+    true
+  end
+
   def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6001"}]}) do
     true
   end
 
   def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6017"}]}) do
+    true
+  end
+
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6002"}]}) do
+    true
+  end
+
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6024"}]}) do
     true
   end
 
