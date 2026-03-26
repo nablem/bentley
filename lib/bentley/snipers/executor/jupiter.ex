@@ -224,7 +224,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       slippageBps: slippage_bps
     ]
 
-    Req.get(
+    jupiter_get(
       "#{@jupiter_base_url}/quote",
       Keyword.merge([params: params, headers: jupiter_headers()], jupiter_req_options())
     )
@@ -268,22 +268,34 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
       {:error, {:transaction_failed, reason}} = error ->
         if attempts_left > 0 and retryable_transaction_failure?(reason) do
-          Logger.warning(
-            "[Snipers] Swap failed with retryable on-chain error; requoting and retrying once more: #{inspect(reason)}"
-          )
+          requote_and_retry_swap(quote, wallet, refetch_quote, attempts_left, reason)
+        else
+          error
+        end
 
-          requote_delay_ms = requote_retry_delay_ms()
-          if requote_delay_ms > 0, do: Process.sleep(requote_delay_ms)
-
-          with {:ok, refreshed_quote} <- refetch_quote.() do
-            execute_swap_with_requote(refreshed_quote, wallet, refetch_quote, attempts_left - 1)
-          end
+      {:error, {:send_transaction_failed, reason}} = error ->
+        if attempts_left > 0 and retryable_send_transaction_failure?(reason) do
+          requote_and_retry_swap(quote, wallet, refetch_quote, attempts_left, reason)
         else
           error
         end
 
       other ->
         other
+    end
+  end
+
+  defp requote_and_retry_swap(_quote, wallet, refetch_quote, attempts_left, reason)
+       when is_function(refetch_quote, 0) do
+    Logger.warning(
+      "[Snipers] Swap failed with retryable error; requoting and retrying once more: #{inspect(reason)}"
+    )
+
+    requote_delay_ms = requote_retry_delay_ms()
+    if requote_delay_ms > 0, do: Process.sleep(requote_delay_ms)
+
+    with {:ok, refreshed_quote} <- refetch_quote.() do
+      execute_swap_with_requote(refreshed_quote, wallet, refetch_quote, attempts_left - 1)
     end
   end
 
@@ -516,7 +528,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
       "prioritizationFeeLamports" => "auto"
     }
 
-    Req.post(
+    jupiter_post(
       "#{@jupiter_base_url}/swap",
       Keyword.merge([json: payload, headers: jupiter_headers()], jupiter_req_options())
     )
@@ -594,11 +606,27 @@ defmodule Bentley.Snipers.Executor.Jupiter do
     true
   end
 
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => 6017}]}) do
+    true
+  end
+
   def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6001"}]}) do
     true
   end
 
+  def retryable_transaction_failure?(%{"InstructionError" => [_index, %{"Custom" => "6017"}]}) do
+    true
+  end
+
   def retryable_transaction_failure?(_reason), do: false
+
+  @doc false
+  @spec retryable_send_transaction_failure?(term()) :: boolean()
+  def retryable_send_transaction_failure?(%{"data" => %{"err" => reason}}) do
+    retryable_transaction_failure?(reason)
+  end
+
+  def retryable_send_transaction_failure?(_reason), do: false
 
   defp confirm_transaction(tx_signature), do: confirm_transaction(tx_signature, @default_confirm_max_attempts)
 
@@ -719,7 +747,7 @@ defmodule Bentley.Snipers.Executor.Jupiter do
   defp rpc_post(payload, attempt) do
     method = rpc_method(payload)
 
-    case Req.post(rpc_url(), Keyword.merge([json: payload], solana_rpc_req_options())) do
+    case solana_rpc_post(rpc_url(), Keyword.merge([json: payload], solana_rpc_req_options())) do
       {:ok, response} = result ->
         if retryable_rpc_response?(response) and attempt < rpc_retry_attempts() do
           sleep_rpc_backoff(attempt, method, rpc_retry_reason(response))
@@ -845,6 +873,27 @@ defmodule Bentley.Snipers.Executor.Jupiter do
 
   defp jupiter_req_options do
     Application.get_env(:bentley, :jupiter_req_options, [])
+  end
+
+  defp jupiter_get(url, options) do
+    case Application.get_env(:bentley, :jupiter_http_client) do
+      nil -> Req.get(url, options)
+      module -> module.get(url, options)
+    end
+  end
+
+  defp jupiter_post(url, options) do
+    case Application.get_env(:bentley, :jupiter_http_client) do
+      nil -> Req.post(url, options)
+      module -> module.post(url, options)
+    end
+  end
+
+  defp solana_rpc_post(url, options) do
+    case Application.get_env(:bentley, :solana_rpc_http_client) do
+      nil -> Req.post(url, options)
+      module -> module.post(url, options)
+    end
   end
 
   defp solana_rpc_req_options do

@@ -1,5 +1,7 @@
 ExUnit.start()
 
+Mox.defmock(Bentley.Snipers.JupiterHttpClientMock, for: Bentley.Snipers.JupiterHttpClient)
+Mox.defmock(Bentley.Snipers.SolanaRpcHttpClientMock, for: Bentley.Snipers.JupiterHttpClient)
 Mox.defmock(Bentley.Telegram.ClientMock, for: Bentley.Telegram.Client)
 Mox.defmock(Bentley.Snipers.ExecutorMock, for: Bentley.Snipers.Executor)
 
