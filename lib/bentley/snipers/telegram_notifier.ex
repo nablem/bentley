@@ -9,6 +9,8 @@ defmodule Bentley.Snipers.TelegramNotifier do
   @token_decimals_scale 1_000_000
   @thousand_tokens 100.0
   @hundred_thousand_tokens 100_000.0
+  @max_telegram_message_chars 3500
+  @max_reason_chars 700
 
   @spec notify_buy_success(Definition.t(), String.t(), map(), number()) :: :ok
   def notify_buy_success(%Definition{} = definition, wallet_id, token, units)
@@ -25,7 +27,9 @@ defmodule Bentley.Snipers.TelegramNotifier do
     notify(
       definition,
       wallet_id <>
-        " failed to buy " <> token_symbol(token) <> " (reason: " <> inspect(reason) <> ")"
+        " failed to buy " <>
+        token_symbol(token) <>
+        " (reason: " <> format_failure_reason(reason) <> ")"
     )
   end
 
@@ -44,7 +48,9 @@ defmodule Bentley.Snipers.TelegramNotifier do
     notify(
       definition,
       wallet_id <>
-        " failed to sell " <> token_symbol(token) <> " (reason: " <> inspect(reason) <> ")"
+        " failed to sell " <>
+        token_symbol(token) <>
+        " (reason: " <> format_failure_reason(reason) <> ")"
     )
   end
 
@@ -53,7 +59,9 @@ defmodule Bentley.Snipers.TelegramNotifier do
        do: :ok
 
   defp notify(%Definition{telegram_channel: channel}, message) when is_binary(message) do
-    case Client.send_message(channel, message) do
+    safe_message = truncate(message, @max_telegram_message_chars)
+
+    case Client.send_message(channel, safe_message) do
       :ok ->
         :ok
 
@@ -63,6 +71,47 @@ defmodule Bentley.Snipers.TelegramNotifier do
         )
 
         :ok
+    end
+  end
+
+  defp format_failure_reason({:send_transaction_failed, payload}) do
+    # Typical Solana/Jupiter payload shape:
+    # %{"code" => -32002, "data" => %{"err" => %{"InstructionError" => [idx, %{"Custom" => code}]}, ...}}
+    code = get_in(payload, ["code"])
+    instruction_error = get_in(payload, ["data", "err", "InstructionError"])
+    custom = extract_custom_error(instruction_error)
+
+    base =
+      cond do
+        is_integer(custom) ->
+          "send_transaction_failed code=#{inspect(code)} custom=#{custom}"
+
+        is_binary(custom) ->
+          "send_transaction_failed code=#{inspect(code)} custom=#{custom}"
+
+        true ->
+          "send_transaction_failed code=#{inspect(code)} instruction_error=#{inspect(instruction_error)}"
+      end
+
+    truncate(base, @max_reason_chars)
+  end
+
+  defp format_failure_reason({:transaction_failed, payload}) do
+    truncate("transaction_failed #{inspect(payload)}", @max_reason_chars)
+  end
+
+  defp format_failure_reason(reason) do
+    truncate(inspect(reason), @max_reason_chars)
+  end
+
+  defp extract_custom_error([_idx, %{"Custom" => custom}]), do: custom
+  defp extract_custom_error(_), do: nil
+
+  defp truncate(value, max_chars) when is_binary(value) and is_integer(max_chars) and max_chars > 3 do
+    if String.length(value) > max_chars do
+      String.slice(value, 0, max_chars - 3) <> "..."
+    else
+      value
     end
   end
 

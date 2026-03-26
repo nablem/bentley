@@ -206,6 +206,141 @@ defmodule Bentley.SnipersTest do
     assert :ok = TelegramNotifier.notify_sell_success(definition, "main", token, 99_999_999)
   end
 
+  test "telegram notifier formats send_transaction_failed custom error payload" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{
+           "err" => %{"InstructionError" => [3, %{"Custom" => 6001}]}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message == "main failed to buy $FMT (reason: send_transaction_failed code=-32002 custom=6001)"
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier falls back when send_transaction_failed payload is unrecognized" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-fallback",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "code" => -32002,
+         "data" => %{
+           "err" => %{"InstructionError" => "unexpected"}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=-32002 instruction_error=\"unexpected\")"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier falls back when send_transaction_failed code is missing" do
+    definition = %Definition{
+      id: "fmt-send-transaction-failed-missing-code",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "FMT", token_address: "fmt-token"}
+
+    reason =
+      {:send_transaction_failed,
+       %{
+         "data" => %{
+           "err" => %{"InstructionError" => [0, %{"Other" => 123}]}
+         }
+       }}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert message ==
+               "main failed to buy $FMT (reason: send_transaction_failed code=nil instruction_error=[0, %{\"Other\" => 123}])"
+
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier truncates long failure reason" do
+    definition = %Definition{
+      id: "truncate-reason",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    token = %{ticker: "TRN", token_address: "trn-token"}
+    reason = {:transaction_failed, String.duplicate("x", 5_000)}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert String.starts_with?(message, "main failed to sell $TRN (reason: transaction_failed ")
+      assert String.ends_with?(message, "...)")
+      assert String.length(message) < 900
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_sell_failure(definition, "main", token, reason)
+  end
+
+  test "telegram notifier truncates overly long telegram message" do
+    definition = %Definition{
+      id: "truncate-message",
+      trigger_on_notifier_ids: [],
+      wallet_ids: [],
+      telegram_channel: "@sniper",
+      exit_tiers: []
+    }
+
+    long_wallet_id = String.duplicate("wallet", 700)
+    token = %{ticker: "LONG", token_address: "long-token"}
+
+    Bentley.Telegram.ClientMock
+    |> expect(:send_message, fn "@sniper", message ->
+      assert String.length(message) == 3500
+      assert String.ends_with?(message, "...")
+      :ok
+    end)
+
+    assert :ok = TelegramNotifier.notify_buy_success(definition, long_wallet_id, token, 1)
+  end
+
   test "open_position sends telegram message on buy success" do
     now = ~N[2026-03-18 14:00:00]
 
