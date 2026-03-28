@@ -10,7 +10,7 @@ defmodule Bentley.Activator do
 
   @min_market_cap_threshold 2_500.0
   @age_limit_hours 840
-  @desc_terms_regex ~r/\b(?:a(\.?g)?\.?i|agent(s|ic)?|privacy|dapp|defi|decentralized|platform|trading|artist|dev|creator|.*@.*|powered|driven|airdrops?|fees?|re[ -]launch(?:ed)?|^i('m)?)\b/i
+  @desc_terms_regex ~r/\b(?:a(\.?g)?\.?i|agent(s|ic)?|privacy|dapp|defi|decentralized|platform|trading|artist|dev|creator|.*@.*|powered|driven|airdrops?|fees?|(re-?)?launch(e[sd])?|^i('m)?)\b/i
 
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
