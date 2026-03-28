@@ -196,7 +196,7 @@ defmodule Bentley.Activator do
   defp blocked_description_terms?(_), do: false
 
   defp invalid_name_charset?(name) when is_binary(name) do
-    not String.match?(name, ~r/\A[a-zA-Z0-9\/_!?:,\. -]+\z/)
+    not String.match?(name, ~r/\A[a-zA-Z0-9\/_!?:,'\. -]+\z/)
   end
 
   defp invalid_name_charset?(_), do: false
