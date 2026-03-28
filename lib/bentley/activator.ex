@@ -25,6 +25,7 @@ defmodule Bentley.Activator do
       dev|
       (live-?)?stream(ed|ing)?|
       creator|
+      reward(s)?|
       .*@.*|
       powered|
       driven|

@@ -317,6 +317,7 @@ defmodule Bentley.ActivatorTest do
       "Powered by memes",
       "Community driven token",
       "Massive airdrop incoming",
+      "Rewards for early users",
       "No fees for early users",
       "DeFi staking protocol",
       "I'm a entrepreneur in crypto"
