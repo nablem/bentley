@@ -191,7 +191,6 @@ defmodule Bentley.UpdaterTest do
       telegram_url: "https://t.me/before",
       tiktok_url: "https://tiktok.com/before",
       instagram_url: "https://instagram.com/before",
-      discord_url: "https://discord.gg/before",
       boost: 9,
       created_on_chain_at: created_on_chain_at,
       market_cap: 3_123.0,
@@ -214,7 +213,6 @@ defmodule Bentley.UpdaterTest do
     assert token.telegram_url == "https://t.me/before"
     assert token.tiktok_url == "https://tiktok.com/before"
     assert token.instagram_url == "https://instagram.com/before"
-    assert token.discord_url == "https://discord.gg/before"
     assert token.boost == 9
     assert token.created_on_chain_at == created_on_chain_at
     assert token.market_cap == 3_123.0

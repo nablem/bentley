@@ -103,6 +103,28 @@ defmodule Bentley.ActivatorTest do
     end)
   end
 
+  test "define_activity marks token as inactive when discord url is present" do
+    attrs = %{token_address: "abc123", discord_url: "https://discord.gg/alpha", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "discord_url_present"
+  end
+
+  test "define_activity keeps token active when discord url is nil or blank" do
+    nil_result =
+      Activator.define_activity(%{token_address: "abc123", discord_url: nil, name: "Alpha", ticker: "ALP"})
+
+    blank_result =
+      Activator.define_activity(%{token_address: "abc123", discord_url: "   ", name: "Alpha", ticker: "ALP"})
+
+    assert nil_result.active == true
+    assert nil_result.inactivity_reason == nil
+    assert blank_result.active == true
+    assert blank_result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive for filtered X URL routes" do
     blocked_x_urls = [
       "https://x.com/alpha/status/123",

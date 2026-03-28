@@ -63,6 +63,7 @@ defmodule Bentley.Activator do
       low_market_cap?(Map.get(attrs, :market_cap)) -> "market_cap_below_2_5k"
       zero_volume_6h?(Map.get(attrs, :volume_6h)) -> "zero_volume_6h"
       tiktok_creator_profile?(Map.get(attrs, :tiktok_url)) -> "tiktok_creator_profile"
+      discord_url_present?(Map.get(attrs, :discord_url)) -> "discord_url_present"
       x_post_url?(Map.get(attrs, :x_url)) -> "x_post_url"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
@@ -115,6 +116,9 @@ defmodule Bentley.Activator do
   end
 
   defp tiktok_creator_profile?(_), do: false
+
+  defp discord_url_present?(discord_url) when is_binary(discord_url), do: not blank?(discord_url)
+  defp discord_url_present?(_), do: false
 
   defp x_post_url?(x_url) when is_binary(x_url) do
     case URI.parse(x_url) do
