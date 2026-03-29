@@ -72,7 +72,6 @@ defmodule Bentley.Activator do
       github_website?(Map.get(attrs, :website_url)) -> "github_website"
       livestream_related?(attrs) -> "livestream_related"
       first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
-      first_update? and name_too_long?(Map.get(attrs, :name)) -> "name_too_long"
       first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
       first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       true -> nil
@@ -224,9 +223,6 @@ defmodule Bentley.Activator do
   end
 
   defp age_above_limit?(_), do: false
-
-  defp name_too_long?(name) when is_binary(name), do: String.length(name) > 35
-  defp name_too_long?(_), do: false
 
   defp blocked_description_terms?(description) when is_binary(description) do
     String.match?(description, @desc_terms_regex)

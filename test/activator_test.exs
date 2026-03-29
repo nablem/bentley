@@ -326,15 +326,6 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == nil
   end
 
-  test "define_activity marks token as inactive when name is longer than 35 chars" do
-    attrs = %{token_address: "abc123", ticker: "ALP", name: "This name is definitely over thirty chars"}
-
-    result = Activator.define_activity(attrs)
-
-    assert result.active == false
-    assert result.inactivity_reason == "name_too_long"
-  end
-
   test "define_activity marks token as inactive when name contains foreign alphabet" do
     attrs = %{token_address: "abc123", ticker: "ALP", name: "Token漢字"}
 
