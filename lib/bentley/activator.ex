@@ -72,7 +72,6 @@ defmodule Bentley.Activator do
       github_website?(Map.get(attrs, :website_url)) -> "github_website"
       livestream_related?(attrs) -> "livestream_related"
       first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
-      first_update? and invalid_name_charset?(Map.get(attrs, :name)) -> "name_contains_foreign_alphabet"
       first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       true -> nil
     end
@@ -229,12 +228,6 @@ defmodule Bentley.Activator do
   end
 
   defp blocked_description_terms?(_), do: false
-
-  defp invalid_name_charset?(name) when is_binary(name) do
-    not String.match?(name, ~r/\A[a-zA-Z0-9\/_!?:,'\. -]+\z/)
-  end
-
-  defp invalid_name_charset?(_), do: false
 
   defp suspicious_name?(name) when is_binary(name) do
     Bentley.SuspiciousTermsCache.match?(name)

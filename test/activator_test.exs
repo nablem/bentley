@@ -326,15 +326,6 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == nil
   end
 
-  test "define_activity marks token as inactive when name contains foreign alphabet" do
-    attrs = %{token_address: "abc123", ticker: "ALP", name: "Token漢字"}
-
-    result = Activator.define_activity(attrs)
-
-    assert result.active == false
-    assert result.inactivity_reason == "name_contains_foreign_alphabet"
-  end
-
   test "define_activity marks token as inactive when description contains blocked terms on first update" do
     blocked_descriptions = [
       "AI-driven platform for everyone",
