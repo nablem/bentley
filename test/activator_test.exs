@@ -88,9 +88,37 @@ defmodule Bentley.ActivatorTest do
       assert result.inactivity_reason == "tiktok_creator_profile"
     end)
 
+    blocked_tiktok_videos = [
+      {"Alpha", "https://www.tiktok.com/@alpha/video/123"},
+      {"Alpha", "https://www.tiktok.com/@alphaofficial/video/123"},
+      {"Tortellini", "https://www.tiktok.com/@tortellini702/video/7621316266602581278"},
+      {"Joeffrey The Pig", "https://www.tiktok.com/@joeffreypig/video/123"},
+      {"Joeffrey The Pig", "https://www.tiktok.com/@joeffrey458/video/123"},
+      {"Joeffrey The Big Pink Pig", "https://www.tiktok.com/@joeffrey999/video/123"},
+      {"Joey Official", "https://www.tiktok.com/@joey46468/video/991"},
+      {"Cafe Luna", "https://www.tiktok.com/@cafelunaofficial/video/555"},
+      {"El Nino", "https://www.tiktok.com/@elnino/video/888"},
+      {"Mega Coin", "https://www.tiktok.com/@mega/video/777"}
+    ]
+
+    Enum.each(blocked_tiktok_videos, fn {token_name, tiktok_url} ->
+      attrs = %{token_address: "abc123", tiktok_url: tiktok_url, name: token_name, ticker: "TRTL"}
+
+      result = Activator.define_activity(attrs)
+
+      assert result.active == false
+      assert result.inactivity_reason == "tiktok_creator_profile"
+    end)
+
     allowed_tiktok_urls = [
-      "https://www.tiktok.com/@alpha/video/123",
-      "https://www.tiktok.com/discover?query=@alpha"
+      "https://www.tiktok.com/@unrelated/video/123",
+      "https://www.tiktok.com/discover?query=@alpha",
+      "https://www.tiktok.com/@joe/video/991",
+      "https://www.tiktok.com/@jo3y/video/991",
+      "https://www.tiktok.com/@pigjoeffrey/video/123",
+      "https://www.tiktok.com/@cafelunafan/video/555",
+      "https://www.tiktok.com/@megacoiners/video/777",
+      "https://www.tiktok.com/tag/@alpha"
     ]
 
     Enum.each(allowed_tiktok_urls, fn tiktok_url ->

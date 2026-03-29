@@ -10,6 +10,7 @@ defmodule Bentley.Activator do
 
   @min_market_cap_threshold 2_500.0
   @age_limit_hours 840
+  @tiktok_name_stopwords ~w(the a an token coin official)
   @desc_terms_regex ~r"""
     \b
     (?:
@@ -62,7 +63,7 @@ defmodule Bentley.Activator do
       invalid_market_cap?(Map.get(attrs, :created_on_chain_at), Map.get(attrs, :market_cap)) -> "invalid_market_cap"
       low_market_cap?(Map.get(attrs, :market_cap)) -> "market_cap_below_2_5k"
       zero_volume_6h?(Map.get(attrs, :volume_6h)) -> "zero_volume_6h"
-      tiktok_creator_profile?(Map.get(attrs, :tiktok_url)) -> "tiktok_creator_profile"
+      tiktok_creator_profile?(Map.get(attrs, :tiktok_url), Map.get(attrs, :name)) -> "tiktok_creator_profile"
       discord_url_present?(Map.get(attrs, :discord_url)) -> "discord_url_present"
       x_post_url?(Map.get(attrs, :x_url)) -> "x_post_url"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
@@ -106,16 +107,54 @@ defmodule Bentley.Activator do
   defp zero_volume_6h?(volume_6h) when is_number(volume_6h), do: volume_6h == 0
   defp zero_volume_6h?(_), do: false
 
-  defp tiktok_creator_profile?(tiktok_url) when is_binary(tiktok_url) do
+  defp tiktok_creator_profile?(tiktok_url, token_name) when is_binary(tiktok_url) do
     case URI.parse(tiktok_url) do
       %URI{path: path} when is_binary(path) ->
-        String.match?(path, ~r|^/@[^/]+/?$|)
+        case Regex.run(~r|^/@([^/?#]+)(?:/([^?#]+))?/?$|, path, capture: :all_but_first) do
+          [_handle] ->
+            true
 
-      _ -> false
+          [handle, _video_segment] ->
+            tiktok_handle_matches_token_name?(handle, token_name)
+
+          _ ->
+            false
+        end
+
+      _ ->
+        false
     end
   end
 
-  defp tiktok_creator_profile?(_), do: false
+  defp tiktok_creator_profile?(_, _), do: false
+
+  defp tiktok_handle_matches_token_name?(handle, token_name)
+       when is_binary(handle) and is_binary(token_name) do
+    normalized_handle = normalize_name_for_tiktok_match(handle)
+    normalized_token_name = normalize_name_for_tiktok_match(token_name)
+
+    byte_size(normalized_handle) >= 4 and
+      byte_size(normalized_token_name) >= 4 and
+      (normalized_handle == normalized_token_name or
+         String.starts_with?(normalized_handle, normalized_token_name))
+  end
+
+  defp tiktok_handle_matches_token_name?(_, _), do: false
+
+  defp normalize_name_for_tiktok_match(value) when is_binary(value) do
+    value
+    |> URI.decode()
+    |> String.downcase()
+    |> :unicode.characters_to_nfd_binary()
+    |> String.replace(~r/\p{Mn}/u, "")
+    |> String.split(~r/[^a-z0-9]+/u, trim: true)
+    |> maybe_reduce_to_leading_name()
+    |> Enum.reject(&(&1 in @tiktok_name_stopwords))
+    |> Enum.join("")
+  end
+
+  defp maybe_reduce_to_leading_name([first_word, "the" | _rest]), do: [first_word]
+  defp maybe_reduce_to_leading_name(words), do: words
 
   defp discord_url_present?(discord_url) when is_binary(discord_url), do: not blank?(discord_url)
   defp discord_url_present?(_), do: false
