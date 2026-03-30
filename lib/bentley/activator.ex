@@ -71,7 +71,12 @@ defmodule Bentley.Activator do
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
       suspicious_website?(attrs) -> "suspicious_website"
       first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
-      first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
+      # Re-enforce suspicious_name on subsequent updates when it was already the stored reason.
+      # This prevents a cache reload from being undone by the next updater cycle,
+      # which skips this check for non-first updates.
+      (Map.get(attrs, :inactivity_reason) == "suspicious_name" or
+         (first_update? and suspicious_name?(Map.get(attrs, :name)))) ->
+        "suspicious_name"
       true -> nil
     end
   end

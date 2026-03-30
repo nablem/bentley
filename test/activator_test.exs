@@ -406,6 +406,39 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == nil
   end
 
+  test "define_activity re-applies suspicious name check after first update when inactivity_reason was suspicious_name" do
+    attrs = %{
+      token_address: "abc123",
+      ticker: "ALP",
+      name: "Mega Rug Launch",
+      inactivity_reason: "suspicious_name",
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "suspicious_name"
+  end
+
+  test "define_activity skips suspicious name check after first update when inactivity_reason is something else" do
+    suspicious_terms_file_path = write_suspicious_terms_file(["rug"])
+    Application.put_env(:bentley, :suspicious_terms_file_path, suspicious_terms_file_path)
+
+    attrs = %{
+      token_address: "abc123",
+      ticker: "ALP",
+      name: "Mega Rug Launch",
+      inactivity_reason: "low_liquidity",
+      last_checked_at: ~N[2026-03-16 00:00:00]
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity skips blocked description check after first update" do
     attrs = %{
       token_address: "abc123",
