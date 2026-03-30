@@ -192,46 +192,40 @@ defmodule Bentley.ActivatorTest do
     assert result.inactivity_reason == "high_boost"
   end
 
-  test "define_activity marks token as inactive for kick website" do
-    attrs = %{
-      token_address: "abc123",
-      website_url: "https://kick.com/some-channel",
-      name: "Alpha",
-      ticker: "ALP"
-    }
+  test "define_activity marks token as inactive for suspicious websites" do
+    blocked_urls = [
+      "https://kick.com/some-channel",
+      "https://www.twitch.tv/some-channel",
+      "https://github.com/febo/p-token",
+      "https://www.youtube.com/watch?v=abc123",
+      "https://youtu.be/abc123",
+      "https://bitcointalk.org/index.php?topic=123",
+      "https://www.reddit.com/r/CryptoMoonShots",
+      "https://boards.4chan.org/biz/"
+    ]
 
-    result = Activator.define_activity(attrs)
+    Enum.each(blocked_urls, fn website_url ->
+      attrs = %{token_address: "abc123", website_url: website_url, name: "Alpha", ticker: "ALP"}
 
-    assert result.active == false
-    assert result.inactivity_reason == "livestream_related"
-  end
+      result = Activator.define_activity(attrs)
 
-  test "define_activity marks token as inactive for github website" do
-    attrs = %{
-      token_address: "abc123",
-      website_url: "https://github.com/febo/p-token",
-      name: "Alpha",
-      ticker: "ALP"
-    }
+      assert result.active == false
+      assert result.inactivity_reason == "suspicious_website"
+    end)
 
-    result = Activator.define_activity(attrs)
+    allowed_urls = [
+      "https://gitlab.com/example/project",
+      "https://myproject.com"
+    ]
 
-    assert result.active == false
-    assert result.inactivity_reason == "github_website"
-  end
+    Enum.each(allowed_urls, fn website_url ->
+      attrs = %{token_address: "abc123", website_url: website_url, name: "Alpha", ticker: "ALP"}
 
-  test "define_activity does not mark token inactive for non-github website" do
-    attrs = %{
-      token_address: "abc123",
-      website_url: "https://gitlab.com/example/project",
-      name: "Alpha",
-      ticker: "ALP"
-    }
+      result = Activator.define_activity(attrs)
 
-    result = Activator.define_activity(attrs)
-
-    assert result.active == true
-    assert result.inactivity_reason == nil
+      assert result.active == true
+      assert result.inactivity_reason == nil
+    end)
   end
 
   test "define_activity marks token as inactive when name or ticker is nil" do

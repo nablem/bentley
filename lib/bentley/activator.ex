@@ -69,8 +69,7 @@ defmodule Bentley.Activator do
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
-      github_website?(Map.get(attrs, :website_url)) -> "github_website"
-      livestream_related?(attrs) -> "livestream_related"
+      suspicious_website?(attrs) -> "suspicious_website"
       first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
       first_update? and suspicious_name?(Map.get(attrs, :name)) -> "suspicious_name"
       true -> nil
@@ -177,29 +176,12 @@ defmodule Bentley.Activator do
   defp high_boost?(boost) when is_number(boost), do: boost >= 500
   defp high_boost?(_), do: false
 
-  defp github_website?(website_url) when is_binary(website_url) do
-    case URI.parse(website_url) do
-      %URI{host: host} when is_binary(host) ->
-        normalized_host =
-          host
-          |> String.downcase()
-          |> String.trim_leading("www.")
-
-        String.ends_with?(normalized_host, "github.com")
-
-      _ ->
-        false
-    end
-  end
-
-  defp github_website?(_), do: false
-
-  defp livestream_related?(attrs) do
+  defp suspicious_website?(attrs) do
     [Map.get(attrs, :website_url), Map.get(attrs, :url)]
-    |> Enum.any?(&livestream_domain?/1)
+    |> Enum.any?(&suspicious_website_domain?/1)
   end
 
-  defp livestream_domain?(value) when is_binary(value) do
+  defp suspicious_website_domain?(value) when is_binary(value) do
     case URI.parse(value) do
       %URI{host: host} when is_binary(host) ->
         normalized_host =
@@ -207,15 +189,21 @@ defmodule Bentley.Activator do
           |> String.downcase()
           |> String.trim_leading("www.")
 
-        String.ends_with?(normalized_host, "kick.com") or
-          String.ends_with?(normalized_host, "twitch.tv")
+        String.ends_with?(normalized_host, "github.com") or
+          String.ends_with?(normalized_host, "kick.com") or
+          String.ends_with?(normalized_host, "twitch.tv") or
+          String.ends_with?(normalized_host, "youtube.com") or
+          normalized_host == "youtu.be" or
+          String.ends_with?(normalized_host, "bitcointalk.org") or
+          String.ends_with?(normalized_host, "reddit.com") or
+          String.ends_with?(normalized_host, "4chan.org")
 
       _ ->
         false
     end
   end
 
-  defp livestream_domain?(_), do: false
+  defp suspicious_website_domain?(_), do: false
 
   defp age_above_limit?(created_on_chain_at) when is_struct(created_on_chain_at, NaiveDateTime) do
     NaiveDateTime.diff(current_time(), created_on_chain_at, :second) > @age_limit_hours * 3_600
