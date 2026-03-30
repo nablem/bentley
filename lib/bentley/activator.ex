@@ -22,7 +22,8 @@ defmodule Bentley.Activator do
       defi|
       decentralized|
       platform|
-      trading|
+      trad(ing|e)|
+      predict.*|
       artist|
       dev|
       (live-?)?stream(ed|ing)?|

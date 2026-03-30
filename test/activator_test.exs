@@ -349,6 +349,8 @@ defmodule Bentley.ActivatorTest do
       "Streamed live on Twitch",
       "Decentralized liquidity network",
       "Best trading terminal",
+      "Trade smarter",
+      "Predict the future",
       "Crypto artist collective",
       "By BetaToken creator",
       "By @gamma",
