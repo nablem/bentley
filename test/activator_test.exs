@@ -201,6 +201,7 @@ defmodule Bentley.ActivatorTest do
       "https://youtu.be/abc123",
       "https://bitcointalk.org/index.php?topic=123",
       "https://www.reddit.com/r/CryptoMoonShots",
+      "https://en.wikipedia.org/wiki/Bitcoin",
       "https://boards.4chan.org/biz/"
     ]
 
@@ -348,6 +349,7 @@ defmodule Bentley.ActivatorTest do
       "DeFi staking protocol",
       "I'm a entrepreneur in crypto",
       "First token on the blockchain",
+      "Official token of the metaverse"
     ]
 
     Enum.each(blocked_descriptions, fn description ->

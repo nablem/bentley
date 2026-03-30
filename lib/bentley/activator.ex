@@ -34,7 +34,8 @@ defmodule Bentley.Activator do
       fees?|
       (re)?launch(e[rsd]|ing)?|
       ^i('m)?|
-      first
+      first|
+      official
     )
     \b
   """ix
@@ -199,9 +200,10 @@ defmodule Bentley.Activator do
           String.ends_with?(normalized_host, "kick.com") or
           String.ends_with?(normalized_host, "twitch.tv") or
           String.ends_with?(normalized_host, "youtube.com") or
-          normalized_host == "youtu.be" or
+          String.ends_with?(normalized_host, "youtu.be") or
           String.ends_with?(normalized_host, "bitcointalk.org") or
           String.ends_with?(normalized_host, "reddit.com") or
+          String.ends_with?(normalized_host, "wikipedia.org") or
           String.ends_with?(normalized_host, "4chan.org")
 
       _ ->
