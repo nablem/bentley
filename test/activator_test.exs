@@ -346,7 +346,8 @@ defmodule Bentley.ActivatorTest do
       "Rewards for early users",
       "No fees for early users",
       "DeFi staking protocol",
-      "I'm a entrepreneur in crypto"
+      "I'm a entrepreneur in crypto",
+      "First token on the blockchain",
     ]
 
     Enum.each(blocked_descriptions, fn description ->

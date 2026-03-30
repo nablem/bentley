@@ -33,7 +33,8 @@ defmodule Bentley.Activator do
       airdrops?|
       fees?|
       (re)?launch(e[rsd]|ing)?|
-      ^i('m)?
+      ^i('m)?|
+      first
     )
     \b
   """ix
