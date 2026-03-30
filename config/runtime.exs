@@ -9,6 +9,7 @@ notifiers_file_path = System.get_env("NOTIFIERS_FILE_PATH")
 snipers_file_path = System.get_env("SNIPERS_FILE_PATH")
 telegram_bot_token = System.get_env("TELEGRAM_BOT_TOKEN")
 database_path = System.get_env("DATABASE_PATH")
+claude_api_key = System.get_env("CLAUDE_API_KEY")
 
 blank_to_nil = fn
   value when is_binary(value) ->
@@ -26,6 +27,7 @@ notifiers_file_path = blank_to_nil.(notifiers_file_path)
 snipers_file_path = blank_to_nil.(snipers_file_path)
 telegram_bot_token = blank_to_nil.(telegram_bot_token)
 database_path = blank_to_nil.(database_path)
+claude_api_key = blank_to_nil.(claude_api_key)
 
 if is_binary(suspicious_terms_file_path) and config_env() != :test and
      not File.exists?(suspicious_terms_file_path) do
@@ -84,4 +86,5 @@ config :bentley,
   suspicious_terms_file_path: suspicious_terms_file_path,
   notifiers_file_path: notifiers_file_path,
   snipers_file_path: snipers_file_path,
-  telegram_bot_token: telegram_bot_token
+  telegram_bot_token: telegram_bot_token,
+  claude_api_key: claude_api_key

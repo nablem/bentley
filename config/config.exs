@@ -14,8 +14,9 @@ config :bentley,
   notifiers_file_path: nil,
   start_snipers: true,
   snipers_file_path: nil,
+  claude_api_key: nil,
+  claude_client: Bentley.Claude.HTTPClient,
   telegram_bot_token: nil,
-  telegram_api_base_url: "https://api.telegram.org",
   telegram_client: Bentley.Telegram.HTTPClient,
   sniper_executor: Bentley.Snipers.Executor.Jupiter
 
