@@ -12,6 +12,7 @@ The application expects these environment variables outside test:
 - `SNIPERS_FILE_PATH`: optional path to the YAML sniper definitions.
 - `DATABASE_PATH`: optional sqlite database path override for runtime/release.
 - `TELEGRAM_BOT_TOKEN`: required when `NOTIFIERS_FILE_PATH` is set.
+- `CLAUDE_API_KEY`: optional Anthropic API key used to flag two-word human-like token names as `real_person`.
 
 In development, `.env` is loaded automatically. In production releases,
 environment variables must be set by the host process manager or shell before

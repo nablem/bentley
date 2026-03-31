@@ -1,13 +1,25 @@
 defmodule Bentley.ActivatorTest do
   use ExUnit.Case, async: false
 
+  import Mox
+
   alias Bentley.Activator
+
+  setup :set_mox_from_context
+  setup :verify_on_exit!
 
   setup do
     previous_path = Application.get_env(:bentley, :suspicious_terms_file_path)
+    previous_claude_api_key = Application.get_env(:bentley, :claude_api_key)
+    previous_claude_client = Application.get_env(:bentley, :claude_client)
+
+    Application.delete_env(:bentley, :claude_api_key)
+    Application.put_env(:bentley, :claude_client, Bentley.Claude.ClientMock)
 
     on_exit(fn ->
       Application.put_env(:bentley, :suspicious_terms_file_path, previous_path)
+      restore_app_env(:bentley, :claude_api_key, previous_claude_api_key)
+      restore_app_env(:bentley, :claude_client, previous_claude_client)
     end)
 
     :ok
@@ -337,6 +349,8 @@ defmodule Bentley.ActivatorTest do
       "Streamed live on Twitch",
       "Decentralized liquidity network",
       "Best trading terminal",
+      "Trade smarter",
+      "Predict the future",
       "Crypto artist collective",
       "By BetaToken creator",
       "By @gamma",
@@ -360,6 +374,61 @@ defmodule Bentley.ActivatorTest do
       assert result.active == false
       assert result.inactivity_reason == "suspicious_description"
     end)
+  end
+
+  test "define_activity marks token as inactive when Claude says two-word name is a real person" do
+    Application.put_env(:bentley, :claude_api_key, "test-key")
+
+    Bentley.Claude.ClientMock
+    |> expect(:real_person_name?, fn "John Smith" -> {:ok, true} end)
+
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "John Smith"})
+
+    assert result.active == false
+    assert result.inactivity_reason == "real_person"
+  end
+
+  test "define_activity keeps token active when Claude says two-word name is not a real person" do
+    Application.put_env(:bentley, :claude_api_key, "test-key")
+
+    Bentley.Claude.ClientMock
+    |> expect(:real_person_name?, fn "Alpha Coin" -> {:ok, false} end)
+
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "Alpha Coin"})
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity keeps token active when claude api key is missing" do
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "John Smith"})
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity skips claude check when name is not exactly two words" do
+    Application.put_env(:bentley, :claude_api_key, "test-key")
+
+    result = Activator.define_activity(%{token_address: "abc123", ticker: "ALP", name: "Mr. John Smith"})
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
+  test "define_activity skips claude check after first update" do
+    Application.put_env(:bentley, :claude_api_key, "test-key")
+
+    result =
+      Activator.define_activity(%{
+        token_address: "abc123",
+        ticker: "ALP",
+        name: "John Smith",
+        last_checked_at: ~N[2026-03-16 00:00:00]
+      })
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
   end
 
   test "define_activity marks token as inactive when name matches suspicious term" do
@@ -519,4 +588,7 @@ defmodule Bentley.ActivatorTest do
 
     file_path
   end
+
+  defp restore_app_env(app, key, nil), do: Application.delete_env(app, key)
+  defp restore_app_env(app, key, value), do: Application.put_env(app, key, value)
 end

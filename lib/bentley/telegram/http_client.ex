@@ -2,12 +2,13 @@ defmodule Bentley.Telegram.HTTPClient do
   @moduledoc false
 
   @behaviour Bentley.Telegram.Client
+  @api_base_url "https://api.telegram.org"
 
   @impl true
   def send_message(channel, message) when is_binary(channel) and is_binary(message) do
     case bot_token() do
       token when is_binary(token) and token != "" ->
-        url = api_base_url() <> "/bot" <> token <> "/sendMessage"
+        url = @api_base_url <> "/bot" <> token <> "/sendMessage"
 
         post_json(url, %{
           chat_id: channel,
@@ -26,7 +27,7 @@ defmodule Bentley.Telegram.HTTPClient do
       when is_binary(channel) and is_binary(photo_url) and is_binary(caption) do
     case bot_token() do
       token when is_binary(token) and token != "" ->
-        url = api_base_url() <> "/bot" <> token <> "/sendPhoto"
+        url = @api_base_url <> "/bot" <> token <> "/sendPhoto"
 
         post_json(url, %{
           chat_id: channel,
@@ -51,10 +52,6 @@ defmodule Bentley.Telegram.HTTPClient do
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  defp api_base_url do
-    Application.get_env(:bentley, :telegram_api_base_url, "https://api.telegram.org")
   end
 
   defp bot_token do

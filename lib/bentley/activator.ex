@@ -10,6 +10,7 @@ defmodule Bentley.Activator do
 
   @min_market_cap_threshold 2_500.0
   @age_limit_hours 840
+  @human_name_regex ~r/\A[a-z]+ [a-z]+\z/i
   @tiktok_name_stopwords ~w(the a an token coin official)
   @desc_terms_regex ~r"""
     \b
@@ -21,7 +22,8 @@ defmodule Bentley.Activator do
       defi|
       decentralized|
       platform|
-      trading|
+      trad(ing|e)|
+      predict.*|
       artist|
       dev|
       (live-?)?stream(ed|ing)?|
@@ -73,6 +75,7 @@ defmodule Bentley.Activator do
       age_above_limit?(Map.get(attrs, :created_on_chain_at)) -> "age_above_#{@age_limit_hours}h"
       suspicious_website?(attrs) -> "suspicious_website"
       first_update? and blocked_description_terms?(Map.get(attrs, :description)) -> "suspicious_description"
+      first_update? and real_person_name?(Map.get(attrs, :name)) -> "real_person"
       # Re-enforce suspicious_name on subsequent updates when it was already the stored reason.
       # This prevents a cache reload from being undone by the next updater cycle,
       # which skips this check for non-first updates.
@@ -224,6 +227,33 @@ defmodule Bentley.Activator do
   end
 
   defp blocked_description_terms?(_), do: false
+
+  defp real_person_name?(name) when is_binary(name) do
+    trimmed_name = String.trim(name)
+
+    case {String.match?(trimmed_name, @human_name_regex), claude_api_key()} do
+      {true, api_key} when is_binary(api_key) and api_key != "" ->
+        case Bentley.Claude.Client.real_person_name?(trimmed_name) do
+          {:ok, real_person?} -> real_person?
+
+          {:error, reason} ->
+            Logger.warning(
+              "[Activator] Claude real-person check failed for #{inspect(trimmed_name)}: #{inspect(reason)}"
+            )
+
+            false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp real_person_name?(_), do: false
+
+  defp claude_api_key do
+    Application.get_env(:bentley, :claude_api_key)
+  end
 
   defp suspicious_name?(name) when is_binary(name) do
     Bentley.SuspiciousTermsCache.match?(name)
