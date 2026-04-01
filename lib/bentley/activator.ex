@@ -12,35 +12,34 @@ defmodule Bentley.Activator do
   @age_limit_hours 840
   @human_name_regex ~r/\A[a-z]+ [a-z]+\z/i
   @tiktok_name_stopwords ~w(the a an token coin official)
-  @desc_terms_regex ~r"""
-    \b
-    (?:
-      a(\.?g)?\.?i|
-      agent(s|ic)?|
-      privacy|
-      dapp|
-      defi|
-      decentralized|
-      platform|
-      trad(ing|e)|
-      predict.*|
-      artist|
-      dev|
-      (live-?)?stream(ed|ing)?|
-      creator|
-      reward(s)?|
-      .*@.*|
-      powered|
-      driven|
-      airdrops?|
-      fees?|
-      (re)?launch(e[rsd]|ing)?|
-      ^i('m)?|
-      first|
-      official
-    )
-    \b
-  """ix
+  @desc_term_patterns [
+    "a(\\.?g)?\\.?i",
+    "agent(s|ic)?",
+    "privacy",
+    "dapp",
+    "defi",
+    "decentralized",
+    "platform",
+    "trad(ing|e)",
+    "predict.*",
+    "artist",
+    "dev",
+    "(live-?)?stream(ed|ing)?",
+    "creator",
+    "reward(s)?",
+    "^[\\s\\S]*@[a-z0-9_]+",
+    "powered",
+    "driven",
+    "airdrops?",
+    "fees?",
+    "donat(ing|ed?|ions?|ors?)?",
+    "charity",
+    "(re)?launch(e[rsd]|ing)?",
+    "^((hello|hi|hey),? )?i('m)?",
+    "first",
+    "official"
+  ]
+  @desc_terms_regex_cache_key {__MODULE__, :desc_terms_regex, @desc_term_patterns}
 
   @spec define_activity(map()) :: %{active: boolean(), inactivity_reason: String.t() | nil}
   def define_activity(attrs) when is_map(attrs) do
@@ -223,10 +222,34 @@ defmodule Bentley.Activator do
   defp age_above_limit?(_), do: false
 
   defp blocked_description_terms?(description) when is_binary(description) do
-    String.match?(description, @desc_terms_regex)
+    String.match?(description, cached_desc_terms_regex())
   end
 
   defp blocked_description_terms?(_), do: false
+
+  defp cached_desc_terms_regex do
+    case :persistent_term.get(@desc_terms_regex_cache_key, nil) do
+      nil ->
+        compiled_regex =
+          @desc_term_patterns
+          |> Enum.map(fn term ->
+            prefixed_term =
+              if String.starts_with?(term, "^"), do: term, else: "\\b#{term}"
+
+            if String.ends_with?(term, "$"),
+              do: prefixed_term,
+              else: "#{prefixed_term}\\b"
+          end)
+          |> Enum.join("|")
+          |> then(&Regex.compile!(&1, "ix"))
+
+        :persistent_term.put(@desc_terms_regex_cache_key, compiled_regex)
+        compiled_regex
+
+      cached_regex ->
+        cached_regex
+    end
+  end
 
   defp real_person_name?(name) when is_binary(name) do
     trimmed_name = String.trim(name)

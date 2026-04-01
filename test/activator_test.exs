@@ -360,8 +360,12 @@ defmodule Bentley.ActivatorTest do
       "Massive airdrop incoming",
       "Rewards for early users",
       "No fees for early users",
+      "Charity event coming soon",
+      "Donate to our cause",
+      "Donations help us grow",
       "DeFi staking protocol",
       "I'm a entrepreneur in crypto",
+      "Bay Area startup R3 Bio, co-founded by \n@JohnSchloendorn\n  and Alice Gilman, is engineering bodyoids.",
       "First token on the blockchain",
       "Official token of the metaverse"
     ]
