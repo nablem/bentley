@@ -68,6 +68,8 @@ defmodule Bentley.Activator do
       zero_volume_6h?(Map.get(attrs, :volume_6h)) -> "zero_volume_6h"
       tiktok_creator_profile?(Map.get(attrs, :tiktok_url), Map.get(attrs, :name)) -> "tiktok_creator_profile"
       discord_url_present?(Map.get(attrs, :discord_url)) -> "discord_url_present"
+      telegram_without_website?(Map.get(attrs, :telegram_url), Map.get(attrs, :website_url)) ->
+        "telegram_url_without_website"
       x_post_url?(Map.get(attrs, :x_url)) -> "x_post_url"
       low_liquidity?(Map.get(attrs, :liquidity)) -> "low_liquidity"
       high_boost?(Map.get(attrs, :boost)) -> "high_boost"
@@ -164,6 +166,13 @@ defmodule Bentley.Activator do
 
   defp discord_url_present?(discord_url) when is_binary(discord_url), do: not blank?(discord_url)
   defp discord_url_present?(_), do: false
+
+  defp telegram_without_website?(telegram_url, website_url)
+       when is_binary(telegram_url) do
+    not blank?(telegram_url) and blank?(website_url)
+  end
+
+  defp telegram_without_website?(_, _), do: false
 
   defp x_post_url?(x_url) when is_binary(x_url) do
     case URI.parse(x_url) do

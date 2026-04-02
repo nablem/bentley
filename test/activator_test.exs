@@ -165,6 +165,30 @@ defmodule Bentley.ActivatorTest do
     assert blank_result.inactivity_reason == nil
   end
 
+  test "define_activity marks token as inactive when telegram url is present but website is missing" do
+    attrs = %{token_address: "abc123", telegram_url: "https://t.me/alpha", name: "Alpha", ticker: "ALP"}
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == false
+    assert result.inactivity_reason == "telegram_url_without_website"
+  end
+
+  test "define_activity keeps token active when telegram url is present and website exists" do
+    attrs = %{
+      token_address: "abc123",
+      telegram_url: "https://t.me/alpha",
+      website_url: "https://alpha.example",
+      name: "Alpha",
+      ticker: "ALP"
+    }
+
+    result = Activator.define_activity(attrs)
+
+    assert result.active == true
+    assert result.inactivity_reason == nil
+  end
+
   test "define_activity marks token as inactive for filtered X URL routes" do
     blocked_x_urls = [
       "https://x.com/alpha/status/123",
