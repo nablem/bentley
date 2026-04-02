@@ -365,6 +365,8 @@ defmodule Bentley.ActivatorTest do
       "Donations help us grow",
       "DeFi staking protocol",
       "I'm a entrepreneur in crypto",
+      "Hi I'm building a new project",
+      "Hello, I'm building a new project",
       "Bay Area startup R3 Bio, co-founded by \n@JohnSchloendorn\n  and Alice Gilman, is engineering bodyoids.",
       "First token on the blockchain",
       "Official token of the metaverse"

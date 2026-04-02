@@ -35,7 +35,7 @@ defmodule Bentley.Activator do
     "donat(ing|ed?|ions?|ors?)?",
     "charity",
     "(re)?launch(e[rsd]|ing)?",
-    "^((hello|hi|hey),? )?i('m)?",
+    "^((hi|hey|hello),? )?i'm",
     "first",
     "official"
   ]
@@ -241,7 +241,7 @@ defmodule Bentley.Activator do
               else: "#{prefixed_term}\\b"
           end)
           |> Enum.join("|")
-          |> then(&Regex.compile!(&1, "ix"))
+          |> then(&Regex.compile!(&1, "i"))
 
         :persistent_term.put(@desc_terms_regex_cache_key, compiled_regex)
         compiled_regex
