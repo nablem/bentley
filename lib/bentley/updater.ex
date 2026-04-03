@@ -158,6 +158,12 @@ defmodule Bentley.Updater do
           {:error, reason} -> {:error, reason}
         end
 
+      {:ok, %{status: 404}} ->
+        case mark_token_inactive(token_address, "token_undefined_per_api") do
+          {:ok, token} -> {:ok, :inactivated, token}
+          {:error, reason} -> {:error, reason}
+        end
+
       {:ok, %{status: 200, body: body}} ->
         Logger.error("[Updater] Unexpected details payload for #{token_address}: #{inspect(body)}")
         {:error, :unexpected_details_payload}

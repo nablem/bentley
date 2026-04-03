@@ -290,6 +290,28 @@ defmodule Bentley.UpdaterTest do
     assert token.last_checked_at != nil
   end
 
+  test "handle_details_response marks token inactive when api returns 404" do
+    token_address = "missing_token"
+
+    %Token{}
+    |> Token.changeset(%{
+      token_address: token_address,
+      active: true,
+      inactivity_reason: nil
+    })
+    |> Repo.insert!()
+
+    capture_log(fn ->
+      assert {:ok, :inactivated, _token} =
+               Updater.handle_details_response(token_address, {:ok, %{status: 404, body: %{}}})
+    end)
+
+    token = Repo.get_by!(Token, token_address: token_address)
+    assert token.active == false
+    assert token.inactivity_reason == "token_undefined_per_api"
+    assert token.last_checked_at != nil
+  end
+
   test "update_token_from_details applies ticker format check only on first update" do
     token_address = "first_update_ticker_space"
 
