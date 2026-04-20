@@ -22,11 +22,12 @@ defmodule Bentley.Activator do
     "platform",
     "trad(ing|e)",
     "predict.*",
-    "artist",
+    "artists?",
     "dev",
     "(live-?)?stream(ed|ing)?",
-    "creator",
-    "reward(s)?",
+    "creators?",
+    "rewards?",
+    "wallets?",
     "^[\\s\\S]*@[a-z0-9_]+",
     "powered",
     "driven",
@@ -94,7 +95,7 @@ defmodule Bentley.Activator do
   end
 
   defp invalid_ticker_format?(ticker) when is_binary(ticker) do
-    not String.match?(ticker, ~r/\A\$?[a-zA-Z0-9_?!-]+\z/)
+    String.length(ticker) > 10 or not String.match?(ticker, ~r/\A\$?[a-zA-Z0-9_?!-]+\z/)
   end
 
   defp invalid_ticker_format?(_), do: false
@@ -215,7 +216,8 @@ defmodule Bentley.Activator do
           String.ends_with?(normalized_host, "bitcointalk.org") or
           String.ends_with?(normalized_host, "reddit.com") or
           String.ends_with?(normalized_host, "wikipedia.org") or
-          String.ends_with?(normalized_host, "4chan.org")
+          String.ends_with?(normalized_host, "4chan.org") or
+          String.ends_with?(normalized_host, "4plebs.org")
 
       _ ->
         false
