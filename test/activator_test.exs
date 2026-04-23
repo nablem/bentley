@@ -381,7 +381,7 @@ defmodule Bentley.ActivatorTest do
       "AI-driven platform for everyone",
       "A.I analytics for meme coins",
       "AGI has been achieved by OmegaToken",
-      "Artificial Intelligence framework",
+      "Artificial Intelligence application for crypto",
       "Autonomous application built on blockchain",
       "Multi-agent application for crypto",
       "Agentic marketing service for web3 projects",
@@ -390,7 +390,7 @@ defmodule Bentley.ActivatorTest do
       "Next-gen dapp launch",
       "Relaunching with new features",
       "Launchpad for new crypto projects",
-      "Innovative game launcher",
+      "Innovative launcher",
       "Project re-launched now",
       "Live-streaming event",
       "Streamed live on Twitch",
@@ -415,7 +415,7 @@ defmodule Bentley.ActivatorTest do
       "Charity event coming soon",
       "Donate to our cause",
       "Donations help us grow",
-      "DeFi protocol",
+      "DeFi network",
       "I'm a entrepreneur in crypto",
       "Hi I'm building a new project",
       "hey im joe",
@@ -424,6 +424,9 @@ defmodule Bentley.ActivatorTest do
       "First token on the blockchain",
       "Official token of the metaverse",
       "A game about a snail that can move faster than light",
+      "Protocol for crypto managers",
+      "Framework for building apps",
+      "Exchange for nerds"
     ]
 
     Enum.each(blocked_descriptions, fn description ->

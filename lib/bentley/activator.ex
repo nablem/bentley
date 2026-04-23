@@ -42,7 +42,10 @@ defmodule Bentley.Activator do
     "^((hi|hey|hello),? )?i'?m",
     "first",
     "official",
-    "game"
+    "game",
+    "protocol",
+    "framework",
+    "exchange",
   ]
   @desc_terms_regex_cache_key {__MODULE__, :desc_terms_regex, @desc_term_patterns}
 
