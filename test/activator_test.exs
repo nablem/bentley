@@ -422,7 +422,8 @@ defmodule Bentley.ActivatorTest do
       "Hello, I'm building a new project",
       "Bay Area startup R3 Bio, co-founded by \n@JohnSchloendorn\n  and Alice Gilman, is engineering bodyoids.",
       "First token on the blockchain",
-      "Official token of the metaverse"
+      "Official token of the metaverse",
+      "A game about a snail that can move faster than light",
     ]
 
     Enum.each(blocked_descriptions, fn description ->

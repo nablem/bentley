@@ -41,7 +41,8 @@ defmodule Bentley.Activator do
     "(re)?launch(e[rsd]|ing|pad)?",
     "^((hi|hey|hello),? )?i'?m",
     "first",
-    "official"
+    "official",
+    "game"
   ]
   @desc_terms_regex_cache_key {__MODULE__, :desc_terms_regex, @desc_term_patterns}
 
