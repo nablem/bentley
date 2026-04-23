@@ -14,13 +14,16 @@ defmodule Bentley.Activator do
   @tiktok_name_stopwords ~w(the a an token coin official)
   @desc_term_patterns [
     "a(\\.?g)?\\.?i",
+    "artificial( general)? intelligence",
+    "autonomous",
     "agent(s|ic)?",
     "privacy",
     "dapp",
     "defi",
     "decentralized",
     "platform",
-    "trad(ing|e)",
+    "marketplace",
+    "(trad|stak)(ing|ed?)",
     "predict.*",
     "artists?",
     "dev",
@@ -35,8 +38,8 @@ defmodule Bentley.Activator do
     "fees?",
     "donat(ing|ed?|ions?|ors?)?",
     "charity",
-    "(re)?launch(e[rsd]|ing)?",
-    "^((hi|hey|hello),? )?i'm",
+    "(re)?launch(e[rsd]|ing|pad)?",
+    "^((hi|hey|hello),? )?i'?m",
     "first",
     "official"
   ]
